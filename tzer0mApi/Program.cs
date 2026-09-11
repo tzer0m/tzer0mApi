@@ -14,6 +14,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<TingService>();
 builder.Services.AddScoped<ChitterPrintService>();
+builder.Services.AddSingleton<QuoteService>();
+builder.Services.AddSingleton<PackingListService>();
 builder.Services.AddHttpClient<GeminiOcrService>();
 builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddScoped<KeysService>();

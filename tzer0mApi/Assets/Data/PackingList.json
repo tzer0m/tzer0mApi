@@ -1,0 +1,22 @@
+[
+  {
+    "Name": "Clothing",
+    "Items": ["Boxers", "Socks", "Shirts", "Shorts", "Jumpers", "Trousers", "Belt", "Swimming Trunks", "Sleeping Clothes", "Coats", "Shoes", "Hats"]
+  },
+  {
+    "Name": "Toiletries",
+    "Items": ["Toothbrush", "Toothpaste", "Contact Lenses", "Deodorant", "Shampoo", "Sun Cream", "Lip Balm"]
+  },
+  {
+    "Name": "Misc",
+    "Items": ["Laundry Bag", "Towel", "Water Bottle", "Watch", "Glasses", "Sunglasses", "Vape", "Book", "Headphones", "Power Adapter", "Phone Charger/Battery", "Laptop/Charger", "Extension Lead", "Car Adapter"]
+  },
+  {
+    "Name": "International",
+    "Items": ["Passport", "GHIC", "Boarding Pass", "Travel Insurance", "Monzo Card", "Cash"]
+  },
+  {
+    "Name": "Skiing",
+    "Items": ["Helmet", "Mask", "Goggles", "Hat", "Gloves", "Jacket", "Salopettes", "Thermals", "Socks"]
+  }
+]

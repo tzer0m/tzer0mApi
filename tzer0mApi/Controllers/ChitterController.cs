@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using tzer0mApi.Models.Chitter;
 using tzer0mApi.Services.Chitter;
 
 namespace tzer0mApi.Controllers;
@@ -7,9 +8,11 @@ namespace tzer0mApi.Controllers;
 /// Handles print jobs for the Aures ODP 333 receipt printer.
 /// </summary>
 /// <param name="printService">The service used to render and send print jobs.</param>
+/// <param name="quoteService">The service used to pick a random motivational quote or Chinese proverb.</param>
+/// <param name="packingListService">The service used to build the packing list text.</param>
 [ApiController]
 [Route("Chitter")]
-public class ChitterController(ChitterPrintService printService) : ControllerBase
+public class ChitterController(ChitterPrintService printService, QuoteService quoteService, PackingListService packingListService) : ControllerBase
 {
     /// <summary>
     /// The maximum size, in bytes, of an uploaded image.
@@ -80,6 +83,67 @@ public class ChitterController(ChitterPrintService printService) : ControllerBas
             return StatusCode(502, new { error = "Failed to reach printer." });
 
         // Return a success response indicating that the image was sent to the printer.
+        return Ok(new { message = "Sent to printer" });
+    }
+
+    /// <summary>
+    /// Picks a random motivational quote and prints it, formatted as the quote followed by its author.
+    /// </summary>
+    /// <returns>200 on success, or 502 if the printer could not be reached.</returns>
+    [HttpPost("Quote", Name = "Print Quote")]
+    public async Task<IActionResult> PrintQuote()
+    {
+        // Pick a random quote and format it for printing.
+        MotivationalQuote quote = quoteService.GetRandomQuote();
+        string text = $"\"{quote.Quote}\"\n\n— {quote.Author}";
+
+        // Send the text to the print service and check if it was sent successfully.
+        bool sent = await printService.PrintTextAsync(text);
+        if (!sent)
+            return StatusCode(502, new { error = "Failed to reach printer." });
+
+        // Return a success response indicating that the quote was sent to the printer.
+        return Ok(new { message = "Sent to printer" });
+    }
+
+    /// <summary>
+    /// Picks a random Chinese proverb and prints it, with the Chinese text followed by its English translation.
+    /// </summary>
+    /// <returns>200 on success, or 502 if the printer could not be reached.</returns>
+    [HttpPost("Proverb", Name = "Print Proverb")]
+    public async Task<IActionResult> PrintProverb()
+    {
+        // Pick a random proverb and format it for printing.
+        ChineseProverb proverb = quoteService.GetRandomProverb();
+        string text = $"{proverb.Chinese}\n{proverb.English}";
+
+        // Send the text to the print service and check if it was sent successfully.
+        bool sent = await printService.PrintTextAsync(text);
+        if (!sent)
+            return StatusCode(502, new { error = "Failed to reach printer." });
+
+        // Return a success response indicating that the proverb was sent to the printer.
+        return Ok(new { message = "Sent to printer" });
+    }
+
+    /// <summary>
+    /// Builds and prints the packing list, including the International and/or Skiing sections when requested.
+    /// </summary>
+    /// <param name="international">Whether to include the International section. Forced true when <paramref name="skiing"/> is true, since skiing trips are always international here.</param>
+    /// <param name="skiing">Whether to include the Skiing section.</param>
+    /// <returns>200 on success, or 502 if the printer could not be reached.</returns>
+    [HttpPost("PackingList", Name = "Print Packing List")]
+    public async Task<IActionResult> PrintPackingList([FromQuery] bool international = false, [FromQuery] bool skiing = false)
+    {
+        // Skiing implies International, regardless of what was passed for it.
+        string text = packingListService.BuildText(international || skiing, skiing);
+
+        // Send the text to the print service and check if it was sent successfully.
+        bool sent = await printService.PrintTextAsync(text);
+        if (!sent)
+            return StatusCode(502, new { error = "Failed to reach printer." });
+
+        // Return a success response indicating that the packing list was sent to the printer.
         return Ok(new { message = "Sent to printer" });
     }
 }
