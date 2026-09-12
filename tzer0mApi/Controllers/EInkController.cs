@@ -13,7 +13,7 @@ namespace tzer0mApi.Controllers;
 public class EInkController(EInkImageService eInkImageService) : ControllerBase
 {
     /// <summary>
-    /// Renders the display shown for the given button letter - the clock for A, a coloured placeholder for B-E until they have dedicated content (B orange, C yellow, D green, E blue).
+    /// Renders the display shown for the given button letter - the clock for A, a coloured placeholder for B-E until they have dedicated content (B red, C yellow, D green, E blue - the four non-black/white inks the Spectra 6 panel can actually produce).
     /// </summary>
     /// <param name="letter">The button letter, A-E.</param>
     /// <returns>An 800x480 PNG image, or 404 if the letter isn't A-E.</returns>
@@ -25,9 +25,9 @@ public class EInkController(EInkImageService eInkImageService) : ControllerBase
             return File(eInkImageService.RenderClock(), "image/png");
         SKColor? colour = normalizedLetter switch
         {
-            "B" => SKColors.Orange,
+            "B" => SKColors.Red,
             "C" => SKColors.Yellow,
-            "D" => SKColors.Green,
+            "D" => SKColors.Lime,
             "E" => SKColors.Blue,
             _ => null
         };
