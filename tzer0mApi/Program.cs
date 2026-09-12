@@ -3,7 +3,6 @@ using tzer0mApi.Services.Chitter;
 using tzer0mApi.Services.Keys;
 using tzer0mApi.Services.Middleware;
 using tzer0mApi.Services.SmarterMeter;
-using tzer0mApi.Services.StockWise;
 using tzer0mApi.Services.Ting;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -20,7 +19,6 @@ builder.Services.AddHttpClient<GeminiOcrService>();
 builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddScoped<KeysService>();
 builder.Services.AddScoped<CalculationService>();
-builder.Services.AddDbContext<StockWiseDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("StockWise")));
 builder.Services.AddHealthChecks().AddNpgSql(builder.Configuration.GetConnectionString("StockWise") ?? throw new InvalidOperationException("Missing StockWise connection string"), name: "stockwise-db");
 
 // Build app
