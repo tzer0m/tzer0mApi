@@ -7,9 +7,9 @@ A backend API that groups together a handful of otherwise-unrelated self-hosted 
 ## Modules
 
 - **Chitter** — renders and sends print jobs to a home-mounted Aures ODP 333 receipt printer over raw ESC/POS, backing the companion [ChitterUI](https://github.com/tzer0m/ChitterUI) Blazor app.
+- **EInk** — renders 800x480 PNGs for a networked e-ink clock (Pimoroni Inky Frame 7.3", Pico 2 W) via `GET /EInk/{letter}` — the clock for A, coloured placeholders for B-E.
 - **Hours** — proxies a Clockify summary report for the current month, used by [`hours.py`](hours.py) (see below) to show hours worked vs. a monthly target.
 - **SmarterMeter** — receives a captured meter photo (by filename, read from a shared NAS path), runs it through Google Cloud Vision OCR, extracts the reading, and prices it against configured tariff periods. Backs a companion meter-reading dashboard and its Home Assistant integration.
-- **StockWise** — `Items` / `Stock` / `Storage` endpoints, backed by EF Core + Postgres, powering a companion .NET MAUI inventory app.
 - **Ting** — sends push notifications via Firebase Cloud Messaging, exposes an endpoint to update the stored FCM token, and receives Uptime Kuma's webhook payload to relay monitor alerts as pushes.
 - **Weather** — UV index/forecast lookups via the OpenUV API.
 
@@ -36,11 +36,10 @@ Configuration lives in `appsettings.json` (see `appsettingsGit.json` for the sha
 {
   "ConnectionStrings": {
     "Robert1": "",
-    "SmarterMeter": "",
-    "StockWise": ""
+    "SmarterMeter": ""
   },
   "Authentication": {
-    "PrivatePaths": [ "/ting", "/ting/update", "/weather/uv/notify", "/smartermeter/*", "stockwise/*" ]
+    "PrivatePaths": [ "/ting", "/ting/update", "/weather/uv/notify", "/smartermeter/*" ]
   },
   "Hours": { "WorkspaceId": "", "ApiKey": "" },
   "Weather": { "OpenUV": { "BaseUrl": "https://api.openuv.io/api/v1/forecast", "ApiKey": "" } },
