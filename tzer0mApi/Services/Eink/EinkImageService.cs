@@ -164,9 +164,9 @@ public class EInkImageService(IWebHostEnvironment env)
             for (int x = 0; x < width; x++)
             {
                 SKColor pixel = bitmap.GetPixel(x, y);
-                raw[rawIndex++] = pixel.Red;
-                raw[rawIndex++] = pixel.Green;
                 raw[rawIndex++] = pixel.Blue;
+                raw[rawIndex++] = pixel.Green;
+                raw[rawIndex++] = pixel.Red;
             }
         }
 
