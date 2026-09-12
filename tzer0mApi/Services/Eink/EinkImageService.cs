@@ -31,6 +31,21 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float DateFontSize = 40f;
 
     /// <summary>
+    /// Font size, in points, used for a placeholder display's big letter.
+    /// </summary>
+    private const float PlaceholderLetterFontSize = 260f;
+
+    /// <summary>
+    /// Font size, in points, used for a placeholder display's caption.
+    /// </summary>
+    private const float PlaceholderCaptionFontSize = 40f;
+
+    /// <summary>
+    /// Font size, in points, used for a colour swatch's big letter.
+    /// </summary>
+    private const float ColourSwatchLetterFontSize = 260f;
+
+    /// <summary>
     /// The lookup table used for PNG chunk CRC32 checksums.
     /// </summary>
     private static readonly uint[] CrcTable = BuildCrcTable();
@@ -60,6 +75,50 @@ public class EInkImageService(IWebHostEnvironment env)
         }
 
         return EncodeGrayscalePng(bitmap);
+    }
+
+    /// <summary>
+    /// Renders a placeholder display, for a display letter without dedicated content yet - just the letter, large and centred, with a small caption underneath.
+    /// </summary>
+    /// <param name="letter">The display letter, e.g. "B".</param>
+    /// <returns>The rendered image, encoded as a minimal 8-bit grayscale PNG.</returns>
+    public byte[] RenderPlaceholder(string letter)
+    {
+        using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
+        using SKTypeface mediumTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Medium.ttf");
+        using SKFont letterFont = new(boldTypeface, PlaceholderLetterFontSize);
+        using SKFont captionFont = new(mediumTypeface, PlaceholderCaptionFontSize);
+        using SKPaint paint = new() { Color = SKColors.Black, IsAntialias = true };
+
+        using SKBitmap bitmap = new(WidthPx, HeightPx);
+        bitmap.Erase(SKColors.White);
+        using (SKCanvas canvas = new(bitmap))
+        {
+            canvas.DrawText(letter, WidthPx / 2f, HeightPx / 2f, SKTextAlign.Center, letterFont, paint);
+            canvas.DrawText($"Display {letter}", WidthPx / 2f, (HeightPx / 2f) + 110f, SKTextAlign.Center, captionFont, paint);
+        }
+
+        return EncodeGrayscalePng(bitmap);
+    }
+
+    /// <summary>
+    /// Renders a solid colour swatch with a large white letter on top, for testing the panel's colour rendering.
+    /// </summary>
+    /// <param name="letter">The display letter, e.g. "B".</param>
+    /// <param name="colour">The swatch's background colour.</param>
+    /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
+    public byte[] RenderColourSwatch(string letter, SKColor colour)
+    {
+        using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
+        using SKFont letterFont = new(boldTypeface, ColourSwatchLetterFontSize);
+        using SKPaint paint = new() { Color = SKColors.White, IsAntialias = true };
+
+        using SKBitmap bitmap = new(WidthPx, HeightPx);
+        bitmap.Erase(colour);
+        using (SKCanvas canvas = new(bitmap))
+            canvas.DrawText(letter, WidthPx / 2f, HeightPx / 2f, SKTextAlign.Center, letterFont, paint);
+
+        return EncodeRgbPng(bitmap);
     }
 
     /// <summary>
@@ -100,6 +159,51 @@ public class EInkImageService(IWebHostEnvironment env)
         WriteBigEndian(ihdr, 4, height);
         ihdr[8] = 8;
         ihdr[9] = 0;
+        ihdr[10] = 0;
+        ihdr[11] = 0;
+        ihdr[12] = 0;
+
+        using MemoryStream output = new();
+        output.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], 0, 8);
+        WriteChunk(output, "IHDR", ihdr);
+        WriteChunk(output, "IDAT", compressed);
+        WriteChunk(output, "IEND", []);
+        return output.ToArray();
+    }
+
+    /// <summary>
+    /// Encodes the given bitmap as a hand-built, minimal 8-bit truecolor (RGB, no alpha) PNG - just IHDR, one IDAT, and IEND, with no ancillary chunks - to sidestep constrained embedded decoders that don't tolerate chunks or colour types beyond the basics.
+    /// </summary>
+    /// <param name="bitmap">The bitmap to encode.</param>
+    /// <returns>The encoded PNG bytes.</returns>
+    private static byte[] EncodeRgbPng(SKBitmap bitmap)
+    {
+        int width = bitmap.Width;
+        int height = bitmap.Height;
+        byte[] raw = new byte[height * (1 + (width * 3))];
+        int rawIndex = 0;
+        for (int y = 0; y < height; y++)
+        {
+            raw[rawIndex++] = 0;
+            for (int x = 0; x < width; x++)
+            {
+                SKColor pixel = bitmap.GetPixel(x, y);
+                raw[rawIndex++] = pixel.Red;
+                raw[rawIndex++] = pixel.Green;
+                raw[rawIndex++] = pixel.Blue;
+            }
+        }
+
+        using MemoryStream compressedStream = new();
+        using (ZLibStream zLibStream = new(compressedStream, CompressionLevel.Optimal, leaveOpen: true))
+            zLibStream.Write(raw, 0, raw.Length);
+        byte[] compressed = compressedStream.ToArray();
+
+        byte[] ihdr = new byte[13];
+        WriteBigEndian(ihdr, 0, width);
+        WriteBigEndian(ihdr, 4, height);
+        ihdr[8] = 8;
+        ihdr[9] = 2;
         ihdr[10] = 0;
         ihdr[11] = 0;
         ihdr[12] = 0;
