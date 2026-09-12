@@ -54,7 +54,7 @@ public class EInkImageService(IWebHostEnvironment env)
 
         using SKImage image = SKImage.FromBitmap(bitmap);
         using SKData data = image.Encode(SKEncodedImageFormat.Png, 100);
-        return data.ToArray();
+        return StripAncillaryChunks(data.ToArray());
     }
 
     /// <summary>
@@ -65,5 +65,28 @@ public class EInkImageService(IWebHostEnvironment env)
     {
         string fontPath = Path.Combine(env.ContentRootPath, fontRelativePath);
         return SKTypeface.FromFile(fontPath) ?? throw new InvalidOperationException($"Could not load font at {fontPath}");
+    }
+
+    /// <summary>
+    /// Strips ancillary PNG chunks (e.g. sBIT, gAMA), keeping only IHDR, PLTE, tRNS, IDAT, and IEND - some embedded decoders don't tolerate chunk types they don't recognise.
+    /// </summary>
+    /// <param name="png">The original PNG bytes.</param>
+    /// <returns>The PNG bytes with only the essential chunks retained.</returns>
+    private static byte[] StripAncillaryChunks(byte[] png)
+    {
+        HashSet<string> essentialChunkTypes = ["IHDR", "PLTE", "tRNS", "IDAT", "IEND"];
+        using MemoryStream output = new();
+        output.Write(png, 0, 8);
+        int position = 8;
+        while (position < png.Length)
+        {
+            int length = (png[position] << 24) | (png[position + 1] << 16) | (png[position + 2] << 8) | png[position + 3];
+            string chunkType = System.Text.Encoding.ASCII.GetString(png, position + 4, 4);
+            int chunkTotalLength = 12 + length;
+            if (essentialChunkTypes.Contains(chunkType))
+                output.Write(png, position, chunkTotalLength);
+            position += chunkTotalLength;
+        }
+        return output.ToArray();
     }
 }
