@@ -41,11 +41,6 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float PlaceholderCaptionFontSize = 40f;
 
     /// <summary>
-    /// Font size, in points, used for a colour swatch's big letter.
-    /// </summary>
-    private const float ColourSwatchLetterFontSize = 260f;
-
-    /// <summary>
     /// The lookup table used for PNG chunk CRC32 checksums.
     /// </summary>
     private static readonly uint[] CrcTable = BuildCrcTable();
@@ -78,45 +73,26 @@ public class EInkImageService(IWebHostEnvironment env)
     }
 
     /// <summary>
-    /// Renders a placeholder display, for a display letter without dedicated content yet - just the letter, large and centred, with a small caption underneath.
+    /// Renders a placeholder display, for a display letter without dedicated content yet - the letter and a small caption, in white, over the letter's assigned colour.
     /// </summary>
     /// <param name="letter">The display letter, e.g. "B".</param>
-    /// <returns>The rendered image, encoded as a minimal 8-bit grayscale PNG.</returns>
-    public byte[] RenderPlaceholder(string letter)
+    /// <param name="colour">The display's assigned background colour.</param>
+    /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
+    public byte[] RenderPlaceholder(string letter, SKColor colour)
     {
         using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
         using SKTypeface mediumTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Medium.ttf");
         using SKFont letterFont = new(boldTypeface, PlaceholderLetterFontSize);
         using SKFont captionFont = new(mediumTypeface, PlaceholderCaptionFontSize);
-        using SKPaint paint = new() { Color = SKColors.Black, IsAntialias = true };
-
-        using SKBitmap bitmap = new(WidthPx, HeightPx);
-        bitmap.Erase(SKColors.White);
-        using (SKCanvas canvas = new(bitmap))
-        {
-            canvas.DrawText(letter, WidthPx / 2f, HeightPx / 2f, SKTextAlign.Center, letterFont, paint);
-            canvas.DrawText($"Display {letter}", WidthPx / 2f, (HeightPx / 2f) + 110f, SKTextAlign.Center, captionFont, paint);
-        }
-
-        return EncodeGrayscalePng(bitmap);
-    }
-
-    /// <summary>
-    /// Renders a solid colour swatch with a large white letter on top, for testing the panel's colour rendering.
-    /// </summary>
-    /// <param name="letter">The display letter, e.g. "B".</param>
-    /// <param name="colour">The swatch's background colour.</param>
-    /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
-    public byte[] RenderColourSwatch(string letter, SKColor colour)
-    {
-        using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
-        using SKFont letterFont = new(boldTypeface, ColourSwatchLetterFontSize);
         using SKPaint paint = new() { Color = SKColors.White, IsAntialias = true };
 
         using SKBitmap bitmap = new(WidthPx, HeightPx);
         bitmap.Erase(colour);
         using (SKCanvas canvas = new(bitmap))
+        {
             canvas.DrawText(letter, WidthPx / 2f, HeightPx / 2f, SKTextAlign.Center, letterFont, paint);
+            canvas.DrawText($"Display {letter}", WidthPx / 2f, (HeightPx / 2f) + 110f, SKTextAlign.Center, captionFont, paint);
+        }
 
         return EncodeRgbPng(bitmap);
     }
