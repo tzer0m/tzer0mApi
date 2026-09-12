@@ -48,7 +48,7 @@ public class EInkImageService(IWebHostEnvironment env)
         using SKPaint paint = new() { Color = SKColors.Black, IsAntialias = true };
 
         DateTime now = DateTime.Now;
-        string timeText = now.ToString("HH:mm:ss");
+        string timeText = now.ToString("HH:mm");
         string dateText = now.ToString("dddd d MMMM yyyy");
 
         using SKBitmap bitmap = new(WidthPx, HeightPx);
