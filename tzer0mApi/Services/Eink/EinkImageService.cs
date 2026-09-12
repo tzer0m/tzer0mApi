@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using SkiaSharp;
 
 namespace tzer0mApi.Services.EInk;
@@ -29,9 +31,14 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float DateFontSize = 40f;
 
     /// <summary>
+    /// The lookup table used for PNG chunk CRC32 checksums.
+    /// </summary>
+    private static readonly uint[] CrcTable = BuildCrcTable();
+
+    /// <summary>
     /// Renders the current time and date to an 800x480 PNG, for display A.
     /// </summary>
-    /// <returns>The rendered image, encoded as PNG bytes.</returns>
+    /// <returns>The rendered image, encoded as a minimal 8-bit grayscale PNG.</returns>
     public byte[] RenderClock()
     {
         using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
@@ -52,9 +59,7 @@ public class EInkImageService(IWebHostEnvironment env)
             canvas.DrawText(dateText, WidthPx / 2f, (HeightPx / 2f) + 70f, SKTextAlign.Center, dateFont, paint);
         }
 
-        using SKImage image = SKImage.FromBitmap(bitmap);
-        using SKData data = image.Encode(SKEncodedImageFormat.Png, 100);
-        return StripAncillaryChunks(data.ToArray());
+        return EncodeGrayscalePng(bitmap);
     }
 
     /// <summary>
@@ -68,25 +73,106 @@ public class EInkImageService(IWebHostEnvironment env)
     }
 
     /// <summary>
-    /// Strips ancillary PNG chunks (e.g. sBIT, gAMA), keeping only IHDR, PLTE, tRNS, IDAT, and IEND - some embedded decoders don't tolerate chunk types they don't recognise.
+    /// Encodes the given bitmap as a hand-built, minimal 8-bit grayscale PNG - just IHDR, one IDAT, and IEND, with no ancillary chunks - to sidestep constrained embedded decoders that don't tolerate chunks or colour types beyond the basics.
     /// </summary>
-    /// <param name="png">The original PNG bytes.</param>
-    /// <returns>The PNG bytes with only the essential chunks retained.</returns>
-    private static byte[] StripAncillaryChunks(byte[] png)
+    /// <param name="bitmap">The bitmap to encode, assumed to contain only black/white/grey content (equal R, G, and B per pixel).</param>
+    /// <returns>The encoded PNG bytes.</returns>
+    private static byte[] EncodeGrayscalePng(SKBitmap bitmap)
     {
-        HashSet<string> essentialChunkTypes = ["IHDR", "PLTE", "tRNS", "IDAT", "IEND"];
-        using MemoryStream output = new();
-        output.Write(png, 0, 8);
-        int position = 8;
-        while (position < png.Length)
+        int width = bitmap.Width;
+        int height = bitmap.Height;
+        byte[] raw = new byte[height * (1 + width)];
+        int rawIndex = 0;
+        for (int y = 0; y < height; y++)
         {
-            int length = (png[position] << 24) | (png[position + 1] << 16) | (png[position + 2] << 8) | png[position + 3];
-            string chunkType = System.Text.Encoding.ASCII.GetString(png, position + 4, 4);
-            int chunkTotalLength = 12 + length;
-            if (essentialChunkTypes.Contains(chunkType))
-                output.Write(png, position, chunkTotalLength);
-            position += chunkTotalLength;
+            raw[rawIndex++] = 0;
+            for (int x = 0; x < width; x++)
+                raw[rawIndex++] = bitmap.GetPixel(x, y).Red;
         }
+
+        using MemoryStream compressedStream = new();
+        using (ZLibStream zLibStream = new(compressedStream, CompressionLevel.Optimal, leaveOpen: true))
+            zLibStream.Write(raw, 0, raw.Length);
+        byte[] compressed = compressedStream.ToArray();
+
+        byte[] ihdr = new byte[13];
+        WriteBigEndian(ihdr, 0, width);
+        WriteBigEndian(ihdr, 4, height);
+        ihdr[8] = 8;
+        ihdr[9] = 0;
+        ihdr[10] = 0;
+        ihdr[11] = 0;
+        ihdr[12] = 0;
+
+        using MemoryStream output = new();
+        output.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], 0, 8);
+        WriteChunk(output, "IHDR", ihdr);
+        WriteChunk(output, "IDAT", compressed);
+        WriteChunk(output, "IEND", []);
         return output.ToArray();
+    }
+
+    /// <summary>
+    /// Writes a single length-prefixed, CRC-suffixed PNG chunk to the given stream.
+    /// </summary>
+    /// <param name="output">The stream to write the chunk to.</param>
+    /// <param name="chunkType">The four-character chunk type, e.g. "IHDR".</param>
+    /// <param name="data">The chunk's payload.</param>
+    private static void WriteChunk(MemoryStream output, string chunkType, byte[] data)
+    {
+        byte[] length = new byte[4];
+        WriteBigEndian(length, 0, data.Length);
+        output.Write(length, 0, 4);
+        byte[] typeBytes = Encoding.ASCII.GetBytes(chunkType);
+        output.Write(typeBytes, 0, 4);
+        output.Write(data, 0, data.Length);
+        byte[] crcInput = new byte[typeBytes.Length + data.Length];
+        Buffer.BlockCopy(typeBytes, 0, crcInput, 0, typeBytes.Length);
+        Buffer.BlockCopy(data, 0, crcInput, typeBytes.Length, data.Length);
+        byte[] crcBytes = new byte[4];
+        WriteBigEndian(crcBytes, 0, (int)Crc32(crcInput));
+        output.Write(crcBytes, 0, 4);
+    }
+
+    /// <summary>
+    /// Writes the given value into the buffer at the given offset, as four big-endian bytes.
+    /// </summary>
+    /// <param name="buffer">The buffer to write into.</param>
+    /// <param name="offset">The offset to write at.</param>
+    /// <param name="value">The value to write.</param>
+    private static void WriteBigEndian(byte[] buffer, int offset, int value)
+    {
+        buffer[offset] = (byte)(value >> 24);
+        buffer[offset + 1] = (byte)(value >> 16);
+        buffer[offset + 2] = (byte)(value >> 8);
+        buffer[offset + 3] = (byte)value;
+    }
+
+    /// <summary>
+    /// Builds the standard CRC32 lookup table used by the PNG chunk checksum.
+    /// </summary>
+    private static uint[] BuildCrcTable()
+    {
+        uint[] table = new uint[256];
+        for (uint n = 0; n < 256; n++)
+        {
+            uint c = n;
+            for (int k = 0; k < 8; k++)
+                c = (c & 1) != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1;
+            table[n] = c;
+        }
+        return table;
+    }
+
+    /// <summary>
+    /// Computes the PNG chunk CRC32 checksum for the given bytes.
+    /// </summary>
+    /// <param name="data">The chunk type plus payload bytes to checksum.</param>
+    private static uint Crc32(byte[] data)
+    {
+        uint crc = 0xFFFFFFFF;
+        foreach (byte b in data)
+            crc = CrcTable[(crc ^ b) & 0xFF] ^ (crc >> 8);
+        return crc ^ 0xFFFFFFFF;
     }
 }
