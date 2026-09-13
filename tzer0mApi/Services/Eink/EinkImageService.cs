@@ -505,14 +505,15 @@ public class EInkImageService(IWebHostEnvironment env)
     /// <param name="fill">The paint to draw with.</param>
     private static void DrawBolt(SKCanvas canvas, float centerX, float centerY, float radius, SKPaint fill)
     {
-        using SKPath path = new();
-        path.MoveTo(centerX + (radius * 0.15f), centerY + (radius * 0.35f));
-        path.LineTo(centerX - (radius * 0.2f), centerY + (radius * 0.75f));
-        path.LineTo(centerX + (radius * 0.05f), centerY + (radius * 0.75f));
-        path.LineTo(centerX - (radius * 0.15f), centerY + (radius * 1.1f));
-        path.LineTo(centerX + (radius * 0.35f), centerY + (radius * 0.6f));
-        path.LineTo(centerX + (radius * 0.1f), centerY + (radius * 0.6f));
-        path.Close();
+        SKPathBuilder pathBuilder = new();
+        pathBuilder.MoveTo(centerX + (radius * 0.15f), centerY + (radius * 0.35f));
+        pathBuilder.LineTo(centerX - (radius * 0.2f), centerY + (radius * 0.75f));
+        pathBuilder.LineTo(centerX + (radius * 0.05f), centerY + (radius * 0.75f));
+        pathBuilder.LineTo(centerX - (radius * 0.15f), centerY + (radius * 1.1f));
+        pathBuilder.LineTo(centerX + (radius * 0.35f), centerY + (radius * 0.6f));
+        pathBuilder.LineTo(centerX + (radius * 0.1f), centerY + (radius * 0.6f));
+        pathBuilder.Close();
+        using SKPath path = pathBuilder.Detach();
         canvas.DrawPath(path, fill);
     }
 
