@@ -1,3 +1,4 @@
+using QRCoder;
 using SkiaSharp;
 using System.Net.Sockets;
 
@@ -217,6 +218,93 @@ public class ChitterPrintService(IConfiguration config, IWebHostEnvironment env,
             new PrintSegment([0x1B, 0x64, (byte)FeedAfter, 0x1D, 0x56, 0x00], 0),
         ];
         return await SendPacedAsync(segments);
+    }
+
+    /// <summary>
+    /// Renders a compact label - the given heading text, a QR code beneath it encoding a guid, then the same divider-and-timestamp footer used elsewhere - for each guid in turn, and prints every label as one paced job, each with its own leading feed and trailing feed-and-cut.
+    /// </summary>
+    /// <param name="name">The heading text printed on every label (e.g. a meal's name).</param>
+    /// <param name="guids">The guid encoded as a QR code on each label, one physical label per entry, printed in order.</param>
+    /// <returns>True if every label was sent successfully, false otherwise.</returns>
+    public async Task<bool> PrintMealLabelsAsync(string name, IReadOnlyList<Guid> guids)
+    {
+        // Nothing to print if no guids were given.
+        if (guids.Count == 0)
+            return true;
+
+        // Setup fonts and colours for the heading text and footer, matching the body/footer fallback chains used elsewhere.
+        using SKTypeface typeface = LoadTypeface(config["Chitter:Image:FontPath"] ?? "Assets/Fonts/SpaceGrotesk-Medium.ttf");
+        using SKTypeface emojiTypeface = LoadTypeface(EmojiFontRelativePath);
+        using SKTypeface cjkTypeface = LoadTypeface(CjkFontRelativePath);
+        using SKFont headingFont = new(typeface, BodyFontSize);
+        using SKFont headingEmojiFont = new(emojiTypeface, BodyFontSize);
+        using SKFont headingCjkFont = new(cjkTypeface, BodyFontSize);
+        using SKFont footerFont = new(typeface, FooterFontSize);
+        using SKFont footerEmojiFont = new(emojiTypeface, FooterFontSize);
+        using SKFont footerCjkFont = new(cjkTypeface, FooterFontSize);
+        SKFont[] headingFonts = [headingFont, headingEmojiFont, headingCjkFont];
+        SKFont[] footerFonts = [footerFont, footerEmojiFont, footerCjkFont];
+        using SKPaint paint = new() { Color = SKColors.Black, IsAntialias = true };
+        SKSamplingOptions qrSampling = new(SKFilterMode.Nearest, SKMipmapMode.None);
+
+        // Wrap the heading text once - it's identical on every label.
+        int contentWidth = WidthPx - (MarginPx * 2);
+        List<(string Text, bool IsBold)> headingLines = WrapBodyText(name, headingFonts, headingFonts, paint, contentWidth);
+        float headingLineHeight = BodyFontSize * 1.3f;
+        int headingBlockHeight = (int)Math.Ceiling(headingLines.Count * headingLineHeight);
+        int footerBlockHeight = FooterBlockHeight();
+
+        // Render one label per guid: the shared heading, that guid's own QR code centred beneath it, then the divider-and-timestamp footer.
+        List<PrintSegment> segments = [];
+        foreach (Guid guid in guids)
+        {
+            using SKBitmap qrBitmap = BuildQrBitmap(guid.ToString(), contentWidth);
+            int qrTopY = MarginPx + headingBlockHeight + MarginPx;
+            int totalHeight = qrTopY + qrBitmap.Height + MarginPx + footerBlockHeight + MarginPx;
+
+            using SKBitmap bitmap = new(WidthPx, totalHeight);
+            bitmap.Erase(SKColors.White);
+            using (SKCanvas canvas = new(bitmap))
+            {
+                float y = MarginPx + BodyFontSize;
+                foreach ((string line, bool _) in headingLines)
+                {
+                    DrawMixedText(canvas, line, MarginPx, y, headingFonts, paint);
+                    y += headingLineHeight;
+                }
+
+                float qrX = MarginPx + ((contentWidth - qrBitmap.Width) / 2f);
+                canvas.DrawBitmap(qrBitmap, qrX, qrTopY, qrSampling);
+
+                DrawFooter(canvas, footerFonts, paint, contentWidth, qrTopY + qrBitmap.Height + MarginPx);
+            }
+
+            // BuildImageSegments already wraps the raster bands with its own leading reset/feed and trailing feed/cut, so each label in the batch prints and cuts as its own separate piece of paper.
+            segments.AddRange(BuildImageSegments(bitmap));
+        }
+
+        return await SendPacedAsync(segments);
+    }
+
+    /// <summary>
+    /// Generates a QR code for the given text as a monochrome bitmap, sized to fit within the given maximum width.
+    /// </summary>
+    /// <param name="text">The text to encode.</param>
+    /// <param name="maxWidthPx">The maximum width, in pixels, the QR code is allowed to print at.</param>
+    private static SKBitmap BuildQrBitmap(string text, int maxWidthPx)
+    {
+        QRCodeGenerator generator = new();
+        QRCodeData data = generator.CreateQrCode(text, QRCodeGenerator.ECCLevel.Q);
+        int moduleCount = data.ModuleMatrix.Count;
+        int pixelsPerModule = Math.Max(4, Math.Min(10, maxWidthPx / moduleCount));
+        PngByteQRCode pngQrCode = new(data);
+        byte[] pngBytes = pngQrCode.GetGraphic(pixelsPerModule);
+        using SKBitmap decoded = SKBitmap.Decode(pngBytes) ?? throw new InvalidOperationException("Could not render QR code.");
+        if (decoded.Width <= maxWidthPx)
+            return decoded.Copy();
+
+        SKSamplingOptions sampling = new(SKFilterMode.Linear, SKMipmapMode.None);
+        return decoded.Resize(new SKImageInfo(maxWidthPx, maxWidthPx), sampling) ?? throw new InvalidOperationException("Could not resize QR code.");
     }
 
     /// <summary>

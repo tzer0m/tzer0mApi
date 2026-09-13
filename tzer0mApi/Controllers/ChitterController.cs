@@ -146,4 +146,33 @@ public class ChitterController(ChitterPrintService printService, QuoteService qu
         // Return a success response indicating that the packing list was sent to the printer.
         return Ok(new { message = "Sent to printer" });
     }
+
+    /// <summary>
+    /// Renders and prints one label per guid - the same heading text on each, with a distinct QR code - for tagging a batch of identical frozen meal containers.
+    /// </summary>
+    /// <param name="request">The heading text and the guids to encode, one physical label per guid.</param>
+    /// <returns>200 on success, 400 if the request is invalid, or 502 if the printer could not be reached.</returns>
+    [HttpPost("MealLabels", Name = "Print Meal Labels")]
+    public async Task<IActionResult> PrintMealLabels([FromBody] MealLabelPrintRequest request)
+    {
+        // Validate that the heading text is non-empty.
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { error = "Request must contain non-empty name text." });
+
+        // Validate that at least one guid was given.
+        if (request.Guids is null || request.Guids.Count == 0)
+            return BadRequest(new { error = "Request must contain at least one guid." });
+
+        // Validate that no more than a sane number of labels are printed in one job.
+        if (request.Guids.Count > 20)
+            return StatusCode(413, new { error = "Request must not exceed 20 labels." });
+
+        // Send the labels to the print service and check if they were sent successfully.
+        bool sent = await printService.PrintMealLabelsAsync(request.Name, request.Guids);
+        if (!sent)
+            return StatusCode(502, new { error = "Failed to reach printer." });
+
+        // Return a success response indicating that the labels were sent to the printer.
+        return Ok(new { message = "Sent to printer" });
+    }
 }
