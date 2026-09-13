@@ -54,7 +54,7 @@ public class EInkImageService(IWebHostEnvironment env)
     /// <summary>
     /// Baseline y-position for the home screen's hero day-of-month number.
     /// </summary>
-    private const float DayNumberBaselineY = 150f;
+    private const float DayNumberBaselineY = 129f;
 
     /// <summary>
     /// Gap, in pixels, between the hero day number and the weekday/month block beside it.
@@ -169,7 +169,7 @@ public class EInkImageService(IWebHostEnvironment env)
     /// <summary>
     /// Size, in pixels, of a task's square marker.
     /// </summary>
-    private const float TaskMarkerSizePx = 16f;
+    private const float TaskMarkerSizePx = 8f;
 
     /// <summary>
     /// Gap, in pixels, between a task's marker and its title.
@@ -276,7 +276,7 @@ public class EInkImageService(IWebHostEnvironment env)
         float columnMidX = WidthPx / 2f;
         float bodyLimitY = HeightPx - BodyBottomPaddingPx;
 
-        canvas.DrawText("TODAY", HomeMarginPx, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
+        canvas.DrawText("EVENTS", HomeMarginPx, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
         float eventTitleMaxWidth = columnMidX - (HomeMarginPx + EventTimeColumnWidthPx) - 16f;
         float eventY = columnTop + SectionHeaderGapPx;
         foreach (HomeAssistantEvent calendarEvent in events)
@@ -304,7 +304,7 @@ public class EInkImageService(IWebHostEnvironment env)
                 break;
             bool isOverdue = task.Status == HomeAssistantTaskStatus.Overdue;
             SKPaint markerPaint = isOverdue ? redFill : blackFill;
-            canvas.DrawRect(new SKRect(taskColumnX, taskY - TaskMarkerSizePx, taskColumnX + TaskMarkerSizePx, taskY), markerPaint);
+            canvas.DrawRect(new SKRect(taskColumnX, taskY - TaskMarkerSizePx - 6f, taskColumnX + TaskMarkerSizePx, taskY - 6f), markerPaint);
             float taskTextX = taskColumnX + TaskMarkerSizePx + TaskMarkerGapPx;
             string taskTitle = TruncateToWidth(task.Title, taskTitleFont, taskTitleMaxWidth);
             if (isOverdue)
