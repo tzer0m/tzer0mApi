@@ -9,7 +9,8 @@ namespace tzer0mApi.Services.HomeAssistant;
 /// </summary>
 /// <param name="configuration">Configuration, used to resolve the Home Assistant base URL, API key, and entity IDs.</param>
 /// <param name="client">The HTTP client used to call Home Assistant's REST API.</param>
-public class HomeAssistantService(IConfiguration configuration, HttpClient client)
+/// <param name="logger">The logger, used to warn when one calendar fails to fetch without losing the others.</param>
+public class HomeAssistantService(IConfiguration configuration, HttpClient client, ILogger<HomeAssistantService> logger)
 {
     /// <summary>
     /// Options used to deserialize Home Assistant's JSON responses.
@@ -49,26 +50,33 @@ public class HomeAssistantService(IConfiguration configuration, HttpClient clien
     private string ApiKey => configuration["HomeAssistant:ApiKey"] ?? throw new NullReferenceException(nameof(ApiKey));
 
     /// <summary>
-    /// Gets today's events across all configured calendars, sorted by start time.
+    /// Gets today's events across all configured calendars, sorted by start time - a calendar that fails to fetch is skipped rather than losing every other calendar's events.
     /// </summary>
     public async Task<List<HomeAssistantEvent>> GetTodaysEventsAsync()
     {
-        string[] calendarEntities = configuration.GetSection("HomeAssistant:Calendars").Get<string[]>() ?? [];
+        List<HomeAssistantCalendarConfig> calendars = configuration.GetSection("HomeAssistant:Calendars").Get<List<HomeAssistantCalendarConfig>>() ?? [];
         DateTime start = DateTime.Today;
         DateTime end = start.AddDays(1);
         List<HomeAssistantEvent> events = [];
-        foreach (string calendarEntity in calendarEntities)
+        foreach (HomeAssistantCalendarConfig calendar in calendars)
         {
-            string url = $"{BaseUrl}/api/calendars/{calendarEntity}?start={Uri.EscapeDataString(start.ToString("o"))}&end={Uri.EscapeDataString(end.ToString("o"))}";
-            string content = await SendAsync(HttpMethod.Get, url);
-            List<HomeAssistantCalendarEventResponse>? calendarEvents = JsonSerializer.Deserialize<List<HomeAssistantCalendarEventResponse>>(content, SerializerOptions);
-            if (calendarEvents is null)
-                continue;
-            foreach (HomeAssistantCalendarEventResponse calendarEvent in calendarEvents)
+            try
             {
-                bool isAllDay = calendarEvent.Start.Date is not null;
-                DateTime eventStart = calendarEvent.Start.DateTimeValue ?? calendarEvent.Start.Date!.Value.ToDateTime(TimeOnly.MinValue);
-                events.Add(new HomeAssistantEvent { Title = calendarEvent.Summary ?? string.Empty, Start = eventStart, IsAllDay = isAllDay });
+                string url = $"{BaseUrl}/api/calendars/{calendar.EntityId}?start={Uri.EscapeDataString(start.ToString("o"))}&end={Uri.EscapeDataString(end.ToString("o"))}";
+                string content = await SendAsync(HttpMethod.Get, url);
+                List<HomeAssistantCalendarEventResponse>? calendarEvents = JsonSerializer.Deserialize<List<HomeAssistantCalendarEventResponse>>(content, SerializerOptions);
+                if (calendarEvents is null)
+                    continue;
+                foreach (HomeAssistantCalendarEventResponse calendarEvent in calendarEvents)
+                {
+                    bool isAllDay = calendarEvent.Start.Date is not null;
+                    DateTime eventStart = calendarEvent.Start.DateTimeValue ?? calendarEvent.Start.Date!.Value.ToDateTime(TimeOnly.MinValue);
+                    events.Add(new HomeAssistantEvent { Title = calendarEvent.Summary ?? string.Empty, Start = eventStart, IsAllDay = isAllDay, Color = calendar.Color });
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not fetch events from calendar {EntityId}", calendar.EntityId);
             }
         }
         return [.. events.OrderBy(homeAssistantEvent => homeAssistantEvent.Start)];
@@ -110,8 +118,8 @@ public class HomeAssistantService(IConfiguration configuration, HttpClient clien
         if (state is null || !state.Attributes.TryGetValue("temperature", out JsonElement temperatureElement))
             return null;
 
-        (string Label, WeatherIconKind IconKind) = ConditionMap.TryGetValue(state.State, out (string Label, WeatherIconKind IconKind) match) ? match : (state.State, WeatherIconKind.Cloudy);
-        return new HomeAssistantWeather { Label = Label, IconKind = IconKind, TemperatureC = temperatureElement.GetDouble() };
+        (string Label, WeatherIconKind IconKind) mapped = ConditionMap.TryGetValue(state.State, out (string Label, WeatherIconKind IconKind) match) ? match : (state.State, WeatherIconKind.Cloudy);
+        return new HomeAssistantWeather { Label = mapped.Label, IconKind = mapped.IconKind, TemperatureC = temperatureElement.GetDouble() };
     }
 
     /// <summary>

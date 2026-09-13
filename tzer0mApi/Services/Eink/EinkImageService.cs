@@ -157,6 +157,16 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float EventTimeColumnWidthPx = 90f;
 
     /// <summary>
+    /// Size, in pixels, of an event's coloured calendar marker.
+    /// </summary>
+    private const float EventMarkerSizePx = 8f;
+
+    /// <summary>
+    /// Gap, in pixels, between an event's marker and its time.
+    /// </summary>
+    private const float EventMarkerGapPx = 10f;
+
+    /// <summary>
     /// Height, in pixels, of one event row.
     /// </summary>
     private const float EventRowHeightPx = 46f;
@@ -243,6 +253,9 @@ public class EInkImageService(IWebHostEnvironment env)
         using SKFont taskTitleFont = new(mediumTypeface, EventFontSize);
         using SKPaint blackFill = new() { Color = SKColors.Black, IsAntialias = true };
         using SKPaint redFill = new() { Color = SKColors.Red, IsAntialias = true };
+        using SKPaint greenFill = new() { Color = SKColors.Lime, IsAntialias = true };
+        using SKPaint yellowFill = new() { Color = SKColors.Yellow, IsAntialias = true };
+        using SKPaint blueFill = new() { Color = SKColors.Blue, IsAntialias = true };
 
         using SKBitmap bitmap = new(WidthPx, HeightPx);
         bitmap.Erase(SKColors.White);
@@ -277,16 +290,20 @@ public class EInkImageService(IWebHostEnvironment env)
         float bodyLimitY = HeightPx - BodyBottomPaddingPx;
 
         canvas.DrawText("EVENTS", HomeMarginPx, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
-        float eventTitleMaxWidth = columnMidX - (HomeMarginPx + EventTimeColumnWidthPx) - 16f;
+        float eventTimeX = HomeMarginPx + EventMarkerSizePx + EventMarkerGapPx;
+        float eventTitleX = eventTimeX + EventTimeColumnWidthPx;
+        float eventTitleMaxWidth = columnMidX - eventTitleX - 16f;
         float eventY = columnTop + SectionHeaderGapPx;
         foreach (HomeAssistantEvent calendarEvent in events)
         {
             if (eventY > bodyLimitY)
                 break;
+            SKPaint markerFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
+            canvas.DrawRect(new SKRect(HomeMarginPx, eventY - EventMarkerSizePx - 6f, HomeMarginPx + EventMarkerSizePx, eventY - 6f), markerFill);
             string eventTimeText = calendarEvent.IsAllDay ? "All day" : calendarEvent.Start.ToString("HH:mm");
             string eventTitle = TruncateToWidth(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth);
-            canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, blackFill);
-            canvas.DrawText(eventTitle, HomeMarginPx + EventTimeColumnWidthPx, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
+            canvas.DrawText(eventTimeText, eventTimeX, eventY, SKTextAlign.Left, eventTimeFont, blackFill);
+            canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
             eventY += EventRowHeightPx;
         }
         if (events.Count == 0)
@@ -349,6 +366,24 @@ public class EInkImageService(IWebHostEnvironment env)
 
         return EncodeRgbPng(bitmap);
     }
+
+    /// <summary>
+    /// Picks the paint matching a calendar's configured colour name, falling back to black for an unrecognised name.
+    /// </summary>
+    /// <param name="colorName">The colour name, e.g. "Red" or "Green".</param>
+    /// <param name="blackFill">The black paint.</param>
+    /// <param name="redFill">The red paint.</param>
+    /// <param name="greenFill">The green paint.</param>
+    /// <param name="yellowFill">The yellow paint.</param>
+    /// <param name="blueFill">The blue paint.</param>
+    private static SKPaint GetColorFill(string colorName, SKPaint blackFill, SKPaint redFill, SKPaint greenFill, SKPaint yellowFill, SKPaint blueFill) => colorName switch
+    {
+        "Red" => redFill,
+        "Green" => greenFill,
+        "Yellow" => yellowFill,
+        "Blue" => blueFill,
+        _ => blackFill
+    };
 
     /// <summary>
     /// Shortens the given text with a trailing ellipsis if it's wider than the given maximum width.

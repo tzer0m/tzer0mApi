@@ -19,4 +19,9 @@ public class HomeAssistantEvent
     /// Whether the event is an all-day event, with no specific start time.
     /// </summary>
     public bool IsAllDay { get; set; }
+
+    /// <summary>
+    /// The colour assigned to the event's calendar, e.g. "Black" or "Red".
+    /// </summary>
+    public string Color { get; set; } = "Black";
 }
