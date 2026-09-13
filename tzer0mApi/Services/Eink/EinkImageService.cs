@@ -278,7 +278,7 @@ public class EInkImageService(IWebHostEnvironment env)
             if (eventY > bodyLimitY)
                 break;
             SKPaint eventFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
-            string eventTimeText = calendarEvent.IsAllDay ? "All day" : calendarEvent.Start.ToString("HH:mm");
+            string eventTimeText = calendarEvent.IsAllDay ? "All Day" : calendarEvent.Start.ToString("HH:mm");
             string eventTitle = TruncateToWidth(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth);
             canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, eventFill);
             canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, eventFill);
