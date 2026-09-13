@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using SkiaSharp;
+using tzer0mApi.Models.HomeAssistant;
 using tzer0mApi.Services.EInk;
+using tzer0mApi.Services.HomeAssistant;
 
 namespace tzer0mApi.Controllers;
 
@@ -8,21 +10,23 @@ namespace tzer0mApi.Controllers;
 /// Serves display images for the Inky Frame e-ink clock's five button-selectable screens.
 /// </summary>
 /// <param name="eInkImageService">The service used to render display images.</param>
+/// <param name="homeAssistantService">The service used to fetch calendar, task, and weather data for display A.</param>
+/// <param name="logger">The logger.</param>
 [ApiController]
 [Route("EInk")]
-public class EInkController(EInkImageService eInkImageService) : ControllerBase
+public class EInkController(EInkImageService eInkImageService, HomeAssistantService homeAssistantService, ILogger<EInkController> logger) : ControllerBase
 {
     /// <summary>
-    /// Renders the display shown for the given button letter - the clock for A, a coloured placeholder for B-E until they have dedicated content (B red, C yellow, D green, E blue - the four non-black/white inks the Spectra 6 panel can actually produce).
+    /// Renders the display shown for the given button letter - the home screen for A, a coloured placeholder for B-E until they have dedicated content (B red, C yellow, D green, E blue - the four non-black/white inks the Spectra 6 panel can actually produce).
     /// </summary>
     /// <param name="letter">The button letter, A-E.</param>
     /// <returns>An 800x480 PNG image, or 404 if the letter isn't A-E.</returns>
     [HttpGet("{letter}", Name = "EInk Display")]
-    public IActionResult GetDisplay(string letter)
+    public async Task<IActionResult> GetDisplay(string letter)
     {
         string normalizedLetter = letter.ToUpperInvariant();
         if (normalizedLetter == "A")
-            return File(eInkImageService.RenderClock(), "image/png");
+            return File(await RenderHomeScreenAsync(), "image/png");
         SKColor? colour = normalizedLetter switch
         {
             "B" => SKColors.Red,
@@ -34,5 +38,35 @@ public class EInkController(EInkImageService eInkImageService) : ControllerBase
         if (colour is null)
             return NotFound();
         return File(eInkImageService.RenderPlaceholder(normalizedLetter, colour.Value), "image/png");
+    }
+
+    /// <summary>
+    /// Fetches today's weather, events, and tasks from Home Assistant and renders the home screen - a source that fails to fetch is simply omitted rather than taking down the whole display.
+    /// </summary>
+    private async Task<byte[]> RenderHomeScreenAsync()
+    {
+        HomeAssistantWeather? weather = await TryGetAsync(homeAssistantService.GetWeatherAsync, "weather");
+        List<HomeAssistantEvent> events = await TryGetAsync(homeAssistantService.GetTodaysEventsAsync, "events") ?? [];
+        List<HomeAssistantTask> tasks = await TryGetAsync(homeAssistantService.GetOverdueAndDueTodayTasksAsync, "tasks") ?? [];
+        return eInkImageService.RenderHomeScreen(DateTime.Now, weather, events, tasks);
+    }
+
+    /// <summary>
+    /// Runs the given Home Assistant fetch, logging and returning the default value if it fails rather than taking down the whole display.
+    /// </summary>
+    /// <typeparam name="T">The fetch's result type.</typeparam>
+    /// <param name="fetch">The fetch to run.</param>
+    /// <param name="sourceName">A short name for the data source, used in the log message.</param>
+    private async Task<T?> TryGetAsync<T>(Func<Task<T>> fetch, string sourceName)
+    {
+        try
+        {
+            return await fetch();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not fetch {SourceName} from Home Assistant", sourceName);
+            return default;
+        }
     }
 }

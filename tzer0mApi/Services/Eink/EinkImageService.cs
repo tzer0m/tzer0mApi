@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using SkiaSharp;
+using tzer0mApi.Models.HomeAssistant;
 
 namespace tzer0mApi.Services.EInk;
 
@@ -41,12 +42,157 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float PlaceholderCaptionFontSize = 40f;
 
     /// <summary>
+    /// Left/right margin used throughout the home screen.
+    /// </summary>
+    private const float HomeMarginPx = 32f;
+
+    /// <summary>
+    /// Font size, in points, used for the home screen's hero day-of-month number.
+    /// </summary>
+    private const float DayNumberFontSize = 128f;
+
+    /// <summary>
+    /// Baseline y-position for the home screen's hero day-of-month number.
+    /// </summary>
+    private const float DayNumberBaselineY = 150f;
+
+    /// <summary>
+    /// Gap, in pixels, between the hero day number and the weekday/month block beside it.
+    /// </summary>
+    private const float HeaderDateGapPx = 22f;
+
+    /// <summary>
+    /// Font size, in points, used for the home screen's weekday and month.
+    /// </summary>
+    private const float WeekdayFontSize = 34f;
+
+    /// <summary>
+    /// Baseline y-position for the home screen's weekday line.
+    /// </summary>
+    private const float WeekdayBaselineY = 66f;
+
+    /// <summary>
+    /// Baseline y-position for the home screen's month line.
+    /// </summary>
+    private const float MonthBaselineY = 108f;
+
+    /// <summary>
+    /// Font size, in points, used for the home screen's time.
+    /// </summary>
+    private const float HomeTimeFontSize = 60f;
+
+    /// <summary>
+    /// Baseline y-position for the home screen's time.
+    /// </summary>
+    private const float HomeTimeBaselineY = 92f;
+
+    /// <summary>
+    /// Baseline y-position for the home screen's weather row.
+    /// </summary>
+    private const float WeatherRowBaselineY = 138f;
+
+    /// <summary>
+    /// Gap, in pixels, between the weather icon, temperature, and condition label.
+    /// </summary>
+    private const float WeatherRowGapPx = 14f;
+
+    /// <summary>
+    /// Radius, in pixels, of the weather icon.
+    /// </summary>
+    private const float WeatherIconRadiusPx = 20f;
+
+    /// <summary>
+    /// Font size, in points, used for the weather temperature.
+    /// </summary>
+    private const float WeatherTempFontSize = 30f;
+
+    /// <summary>
+    /// Font size, in points, used for the weather condition label.
+    /// </summary>
+    private const float WeatherLabelFontSize = 20f;
+
+    /// <summary>
+    /// Y-position of the divider line under the home screen's header.
+    /// </summary>
+    private const float HeaderDividerY = 158f;
+
+    /// <summary>
+    /// Thickness, in pixels, of a divider line.
+    /// </summary>
+    private const float DividerThicknessPx = 3f;
+
+    /// <summary>
+    /// Gap, in pixels, between the header divider and the start of the body columns.
+    /// </summary>
+    private const float BodyTopPaddingPx = 24f;
+
+    /// <summary>
+    /// Margin kept clear at the bottom of the body columns.
+    /// </summary>
+    private const float BodyBottomPaddingPx = 26f;
+
+    /// <summary>
+    /// Font size, in points, used for the "TODAY" and "TASKS" section headers.
+    /// </summary>
+    private const float SectionHeaderFontSize = 20f;
+
+    /// <summary>
+    /// Gap, in pixels, between a section header and its first row.
+    /// </summary>
+    private const float SectionHeaderGapPx = 40f;
+
+    /// <summary>
+    /// Gap, in pixels, either side of the vertical divider between the two body columns.
+    /// </summary>
+    private const float ColumnGapPx = 32f;
+
+    /// <summary>
+    /// Font size, in points, used for an event's time and title.
+    /// </summary>
+    private const float EventFontSize = 22f;
+
+    /// <summary>
+    /// Width, in pixels, reserved for an event's time column.
+    /// </summary>
+    private const float EventTimeColumnWidthPx = 90f;
+
+    /// <summary>
+    /// Height, in pixels, of one event row.
+    /// </summary>
+    private const float EventRowHeightPx = 46f;
+
+    /// <summary>
+    /// Font size, in points, used for a task's "OVERDUE" label.
+    /// </summary>
+    private const float TaskLabelFontSize = 15f;
+
+    /// <summary>
+    /// Size, in pixels, of a task's square marker.
+    /// </summary>
+    private const float TaskMarkerSizePx = 16f;
+
+    /// <summary>
+    /// Gap, in pixels, between a task's marker and its title.
+    /// </summary>
+    private const float TaskMarkerGapPx = 14f;
+
+    /// <summary>
+    /// Height, in pixels, of a due-today task row.
+    /// </summary>
+    private const float TaskRowHeightPx = 42f;
+
+    /// <summary>
+    /// Height, in pixels, of an overdue task row - taller to fit the "OVERDUE" label above the title.
+    /// </summary>
+    private const float TaskOverdueRowHeightPx = 58f;
+
+    /// <summary>
     /// The lookup table used for PNG chunk CRC32 checksums.
     /// </summary>
     private static readonly uint[] CrcTable = BuildCrcTable();
 
     /// <summary>
-    /// Renders the current time and date to an 800x480 PNG, for display A.
+    /// Renders the current time and date to an 800x480 PNG, for display A - used as a fallback when Home Assistant data can't be fetched.
     /// </summary>
     /// <returns>The rendered image, encoded as a minimal 8-bit grayscale PNG.</returns>
     public byte[] RenderClock()
@@ -73,6 +219,113 @@ public class EInkImageService(IWebHostEnvironment env)
     }
 
     /// <summary>
+    /// Renders the home screen - today's date and time, current weather, today's calendar events, and overdue/due-today tasks - to an 800x480 PNG, for display A.
+    /// </summary>
+    /// <param name="now">The current date and time.</param>
+    /// <param name="weather">The current weather, or null if it could not be fetched.</param>
+    /// <param name="events">Today's calendar events, sorted by start time.</param>
+    /// <param name="tasks">Overdue and due-today tasks, sorted by due date.</param>
+    /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
+    public byte[] RenderHomeScreen(DateTime now, HomeAssistantWeather? weather, List<HomeAssistantEvent> events, List<HomeAssistantTask> tasks)
+    {
+        using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
+        using SKTypeface mediumTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Medium.ttf");
+        using SKFont dayNumberFont = new(boldTypeface, DayNumberFontSize);
+        using SKFont weekdayFont = new(boldTypeface, WeekdayFontSize);
+        using SKFont monthFont = new(mediumTypeface, WeekdayFontSize);
+        using SKFont timeFont = new(boldTypeface, HomeTimeFontSize);
+        using SKFont weatherTempFont = new(boldTypeface, WeatherTempFontSize);
+        using SKFont weatherLabelFont = new(mediumTypeface, WeatherLabelFontSize);
+        using SKFont sectionHeaderFont = new(boldTypeface, SectionHeaderFontSize);
+        using SKFont eventTimeFont = new(boldTypeface, EventFontSize);
+        using SKFont eventTitleFont = new(mediumTypeface, EventFontSize);
+        using SKFont taskLabelFont = new(boldTypeface, TaskLabelFontSize);
+        using SKFont taskTitleFont = new(mediumTypeface, EventFontSize);
+        using SKPaint blackFill = new() { Color = SKColors.Black, IsAntialias = true };
+        using SKPaint redFill = new() { Color = SKColors.Red, IsAntialias = true };
+
+        using SKBitmap bitmap = new(WidthPx, HeightPx);
+        bitmap.Erase(SKColors.White);
+        using SKCanvas canvas = new(bitmap);
+
+        string dayText = now.Day.ToString();
+        canvas.DrawText(dayText, HomeMarginPx, DayNumberBaselineY, SKTextAlign.Left, dayNumberFont, blackFill);
+        float dateLabelX = HomeMarginPx + dayNumberFont.MeasureText(dayText) + HeaderDateGapPx;
+        canvas.DrawText(now.ToString("dddd"), dateLabelX, WeekdayBaselineY, SKTextAlign.Left, weekdayFont, blackFill);
+        canvas.DrawText(now.ToString("MMMM"), dateLabelX, MonthBaselineY, SKTextAlign.Left, monthFont, blackFill);
+
+        float timeRight = WidthPx - HomeMarginPx;
+        canvas.DrawText(now.ToString("HH:mm"), timeRight, HomeTimeBaselineY, SKTextAlign.Right, timeFont, blackFill);
+        if (weather is not null)
+        {
+            string tempText = $"{Math.Round(weather.TemperatureC)}°C";
+            float tempWidth = weatherTempFont.MeasureText(tempText);
+            float labelWidth = weatherLabelFont.MeasureText(weather.Label);
+            float labelX = timeRight - labelWidth;
+            float tempX = labelX - WeatherRowGapPx - tempWidth;
+            float iconCenterX = tempX - WeatherRowGapPx - WeatherIconRadiusPx;
+            float iconCenterY = WeatherRowBaselineY - (WeatherIconRadiusPx * 0.5f);
+            DrawWeatherIcon(canvas, weather.IconKind, iconCenterX, iconCenterY, WeatherIconRadiusPx, blackFill);
+            canvas.DrawText(tempText, tempX, WeatherRowBaselineY, SKTextAlign.Left, weatherTempFont, blackFill);
+            canvas.DrawText(weather.Label, labelX, WeatherRowBaselineY, SKTextAlign.Left, weatherLabelFont, blackFill);
+        }
+
+        canvas.DrawRect(new SKRect(HomeMarginPx, HeaderDividerY, WidthPx - HomeMarginPx, HeaderDividerY + DividerThicknessPx), blackFill);
+
+        float columnTop = HeaderDividerY + DividerThicknessPx + BodyTopPaddingPx;
+        float columnMidX = WidthPx / 2f;
+        float bodyLimitY = HeightPx - BodyBottomPaddingPx;
+
+        canvas.DrawText("TODAY", HomeMarginPx, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
+        float eventTitleMaxWidth = columnMidX - (HomeMarginPx + EventTimeColumnWidthPx) - 16f;
+        float eventY = columnTop + SectionHeaderGapPx;
+        foreach (HomeAssistantEvent calendarEvent in events)
+        {
+            if (eventY > bodyLimitY)
+                break;
+            string eventTimeText = calendarEvent.IsAllDay ? "All day" : calendarEvent.Start.ToString("HH:mm");
+            string eventTitle = TruncateToWidth(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth);
+            canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, blackFill);
+            canvas.DrawText(eventTitle, HomeMarginPx + EventTimeColumnWidthPx, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
+            eventY += EventRowHeightPx;
+        }
+        if (events.Count == 0)
+            canvas.DrawText("Nothing scheduled", HomeMarginPx, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
+
+        canvas.DrawRect(new SKRect(columnMidX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, columnMidX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
+
+        float taskColumnX = columnMidX + ColumnGapPx;
+        float taskTitleMaxWidth = WidthPx - HomeMarginPx - (taskColumnX + TaskMarkerSizePx + TaskMarkerGapPx);
+        canvas.DrawText("TASKS", taskColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
+        float taskY = columnTop + SectionHeaderGapPx;
+        foreach (HomeAssistantTask task in tasks)
+        {
+            if (taskY > bodyLimitY)
+                break;
+            bool isOverdue = task.Status == HomeAssistantTaskStatus.Overdue;
+            SKPaint markerPaint = isOverdue ? redFill : blackFill;
+            canvas.DrawRect(new SKRect(taskColumnX, taskY - TaskMarkerSizePx, taskColumnX + TaskMarkerSizePx, taskY), markerPaint);
+            float taskTextX = taskColumnX + TaskMarkerSizePx + TaskMarkerGapPx;
+            string taskTitle = TruncateToWidth(task.Title, taskTitleFont, taskTitleMaxWidth);
+            if (isOverdue)
+            {
+                canvas.DrawText("OVERDUE", taskTextX, taskY - 4f, SKTextAlign.Left, taskLabelFont, redFill);
+                canvas.DrawText(taskTitle, taskTextX, taskY + 16f, SKTextAlign.Left, taskTitleFont, blackFill);
+                taskY += TaskOverdueRowHeightPx;
+            }
+            else
+            {
+                canvas.DrawText(taskTitle, taskTextX, taskY - 3f, SKTextAlign.Left, taskTitleFont, blackFill);
+                taskY += TaskRowHeightPx;
+            }
+        }
+        if (tasks.Count == 0)
+            canvas.DrawText("Nothing due", taskColumnX, taskY, SKTextAlign.Left, taskTitleFont, blackFill);
+
+        return EncodeRgbPng(bitmap);
+    }
+
+    /// <summary>
     /// Renders a placeholder display, for a display letter without dedicated content yet - the letter and a small caption, in white, over the letter's assigned colour.
     /// </summary>
     /// <param name="letter">The display letter, e.g. "B".</param>
@@ -95,6 +348,189 @@ public class EInkImageService(IWebHostEnvironment env)
         }
 
         return EncodeRgbPng(bitmap);
+    }
+
+    /// <summary>
+    /// Shortens the given text with a trailing ellipsis if it's wider than the given maximum width.
+    /// </summary>
+    /// <param name="text">The text to measure and shorten.</param>
+    /// <param name="font">The font the text will be drawn with.</param>
+    /// <param name="maxWidth">The maximum width, in pixels, the text may occupy.</param>
+    private static string TruncateToWidth(string text, SKFont font, float maxWidth)
+    {
+        if (font.MeasureText(text) <= maxWidth)
+            return text;
+        const string ellipsis = "…";
+        int lo = 0;
+        int hi = text.Length;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) / 2;
+            string candidate = text[..mid].TrimEnd() + ellipsis;
+            if (font.MeasureText(candidate) <= maxWidth)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        return text[..Math.Max(lo - 1, 0)].TrimEnd() + ellipsis;
+    }
+
+    /// <summary>
+    /// Draws the small weather icon for the given condition, centred at the given point.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="iconKind">The icon shape to draw.</param>
+    /// <param name="centerX">The icon's horizontal centre.</param>
+    /// <param name="centerY">The icon's vertical centre.</param>
+    /// <param name="radius">The icon's overall radius.</param>
+    /// <param name="fill">The paint to draw with.</param>
+    private static void DrawWeatherIcon(SKCanvas canvas, WeatherIconKind iconKind, float centerX, float centerY, float radius, SKPaint fill)
+    {
+        switch (iconKind)
+        {
+            case WeatherIconKind.Sunny:
+                DrawSun(canvas, centerX, centerY, radius, fill, true);
+                break;
+            case WeatherIconKind.ClearNight:
+                DrawSun(canvas, centerX, centerY, radius, fill, false);
+                break;
+            case WeatherIconKind.PartlyCloudy:
+                DrawSun(canvas, centerX + (radius * 0.35f), centerY - (radius * 0.35f), radius * 0.55f, fill, true);
+                DrawCloud(canvas, centerX - (radius * 0.1f), centerY + (radius * 0.2f), radius * 0.85f, fill);
+                break;
+            case WeatherIconKind.Rain:
+                DrawCloud(canvas, centerX, centerY - (radius * 0.2f), radius * 0.85f, fill);
+                DrawRainDrops(canvas, centerX, centerY, radius, fill);
+                break;
+            case WeatherIconKind.Snow:
+                DrawCloud(canvas, centerX, centerY - (radius * 0.2f), radius * 0.85f, fill);
+                DrawSnowDots(canvas, centerX, centerY, radius, fill);
+                break;
+            case WeatherIconKind.Thunder:
+                DrawCloud(canvas, centerX, centerY - (radius * 0.2f), radius * 0.85f, fill);
+                DrawBolt(canvas, centerX, centerY, radius, fill);
+                break;
+            case WeatherIconKind.Windy:
+                DrawWindLines(canvas, centerX, centerY, radius, fill);
+                break;
+            case WeatherIconKind.Cloudy:
+            default:
+                DrawCloud(canvas, centerX, centerY, radius, fill);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Draws a filled sun, with optional rays, centred at the given point.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="centerX">The sun's horizontal centre.</param>
+    /// <param name="centerY">The sun's vertical centre.</param>
+    /// <param name="radius">The sun's overall radius.</param>
+    /// <param name="fill">The paint to draw with.</param>
+    /// <param name="withRays">Whether to draw the sun's rays.</param>
+    private static void DrawSun(SKCanvas canvas, float centerX, float centerY, float radius, SKPaint fill, bool withRays)
+    {
+        canvas.DrawCircle(centerX, centerY, radius * 0.6f, fill);
+        if (!withRays)
+            return;
+        using SKPaint rayPaint = new() { Color = fill.Color, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 3f, StrokeCap = SKStrokeCap.Round };
+        for (int i = 0; i < 8; i++)
+        {
+            double angle = i * Math.PI / 4;
+            float x1 = centerX + ((float)Math.Cos(angle) * radius * 0.85f);
+            float y1 = centerY + ((float)Math.Sin(angle) * radius * 0.85f);
+            float x2 = centerX + ((float)Math.Cos(angle) * radius * 1.15f);
+            float y2 = centerY + ((float)Math.Sin(angle) * radius * 1.15f);
+            canvas.DrawLine(x1, y1, x2, y2, rayPaint);
+        }
+    }
+
+    /// <summary>
+    /// Draws a filled cloud shape, centred at the given point.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="centerX">The cloud's horizontal centre.</param>
+    /// <param name="centerY">The cloud's vertical centre.</param>
+    /// <param name="radius">The cloud's overall radius.</param>
+    /// <param name="fill">The paint to draw with.</param>
+    private static void DrawCloud(SKCanvas canvas, float centerX, float centerY, float radius, SKPaint fill)
+    {
+        canvas.DrawOval(new SKRect(centerX - (radius * 0.15f), centerY - (radius * 0.75f), centerX + (radius * 0.55f), centerY - (radius * 0.05f)), fill);
+        canvas.DrawOval(new SKRect(centerX - (radius * 0.75f), centerY - (radius * 0.35f), centerX + (radius * 0.05f), centerY + (radius * 0.35f)), fill);
+        canvas.DrawRoundRect(new SKRect(centerX - (radius * 0.95f), centerY - (radius * 0.05f), centerX + (radius * 0.75f), centerY + (radius * 0.5f)), radius * 0.28f, radius * 0.28f, fill);
+    }
+
+    /// <summary>
+    /// Draws three short diagonal rain drops beneath a cloud.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="centerX">The icon's horizontal centre.</param>
+    /// <param name="centerY">The icon's vertical centre.</param>
+    /// <param name="radius">The icon's overall radius.</param>
+    /// <param name="fill">The paint to draw with.</param>
+    private static void DrawRainDrops(SKCanvas canvas, float centerX, float centerY, float radius, SKPaint fill)
+    {
+        using SKPaint dropPaint = new() { Color = fill.Color, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 4f, StrokeCap = SKStrokeCap.Round };
+        float[] offsets = [-0.3f, 0.05f, 0.4f];
+        foreach (float offset in offsets)
+        {
+            float x = centerX + (offset * radius);
+            canvas.DrawLine(x, centerY + (radius * 0.45f), x - 5f, centerY + (radius * 0.95f), dropPaint);
+        }
+    }
+
+    /// <summary>
+    /// Draws three small snow dots beneath a cloud.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="centerX">The icon's horizontal centre.</param>
+    /// <param name="centerY">The icon's vertical centre.</param>
+    /// <param name="radius">The icon's overall radius.</param>
+    /// <param name="fill">The paint to draw with.</param>
+    private static void DrawSnowDots(SKCanvas canvas, float centerX, float centerY, float radius, SKPaint fill)
+    {
+        float[] offsets = [-0.3f, 0.05f, 0.4f];
+        foreach (float offset in offsets)
+            canvas.DrawCircle(centerX + (offset * radius), centerY + (radius * 0.7f), radius * 0.09f, fill);
+    }
+
+    /// <summary>
+    /// Draws a simple lightning bolt beneath a cloud.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="centerX">The icon's horizontal centre.</param>
+    /// <param name="centerY">The icon's vertical centre.</param>
+    /// <param name="radius">The icon's overall radius.</param>
+    /// <param name="fill">The paint to draw with.</param>
+    private static void DrawBolt(SKCanvas canvas, float centerX, float centerY, float radius, SKPaint fill)
+    {
+        using SKPath path = new();
+        path.MoveTo(centerX + (radius * 0.15f), centerY + (radius * 0.35f));
+        path.LineTo(centerX - (radius * 0.2f), centerY + (radius * 0.75f));
+        path.LineTo(centerX + (radius * 0.05f), centerY + (radius * 0.75f));
+        path.LineTo(centerX - (radius * 0.15f), centerY + (radius * 1.1f));
+        path.LineTo(centerX + (radius * 0.35f), centerY + (radius * 0.6f));
+        path.LineTo(centerX + (radius * 0.1f), centerY + (radius * 0.6f));
+        path.Close();
+        canvas.DrawPath(path, fill);
+    }
+
+    /// <summary>
+    /// Draws three horizontal wind lines of decreasing length.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="centerX">The icon's horizontal centre.</param>
+    /// <param name="centerY">The icon's vertical centre.</param>
+    /// <param name="radius">The icon's overall radius.</param>
+    /// <param name="fill">The paint to draw with.</param>
+    private static void DrawWindLines(SKCanvas canvas, float centerX, float centerY, float radius, SKPaint fill)
+    {
+        using SKPaint linePaint = new() { Color = fill.Color, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 4f, StrokeCap = SKStrokeCap.Round };
+        float[] lengths = [0.9f, 0.7f, 0.5f];
+        float[] yOffsets = [-0.4f, 0f, 0.4f];
+        for (int i = 0; i < lengths.Length; i++)
+            canvas.DrawLine(centerX - (radius * lengths[i]), centerY + (radius * yOffsets[i]), centerX + (radius * 0.9f), centerY + (radius * yOffsets[i]), linePaint);
     }
 
     /// <summary>

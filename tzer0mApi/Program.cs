@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using tzer0mApi.Services.Chitter;
 using tzer0mApi.Services.EInk;
+using tzer0mApi.Services.HomeAssistant;
 using tzer0mApi.Services.Keys;
 using tzer0mApi.Services.Middleware;
 using tzer0mApi.Services.SmarterMeter;
@@ -15,6 +16,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<TingService>();
 builder.Services.AddScoped<ChitterPrintService>();
 builder.Services.AddScoped<EInkImageService>();
+builder.Services.AddHttpClient<HomeAssistantService>();
 builder.Services.AddSingleton<QuoteService>();
 builder.Services.AddSingleton<PackingListService>();
 builder.Services.AddHttpClient<GeminiOcrService>();
