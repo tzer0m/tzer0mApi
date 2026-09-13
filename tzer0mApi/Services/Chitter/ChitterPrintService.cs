@@ -221,7 +221,7 @@ public class ChitterPrintService(IConfiguration config, IWebHostEnvironment env,
     }
 
     /// <summary>
-    /// Renders a compact label - the given heading text, a QR code beneath it encoding a guid, then the same divider-and-timestamp footer used elsewhere - for each guid in turn, and prints every label as one paced job, each with its own leading feed and trailing feed-and-cut.
+    /// Renders a compact label - a QR code encoding a guid, the given heading text beneath it, then the same divider-and-timestamp footer used elsewhere - for each guid in turn, and prints every label as one paced job, each with its own leading feed and trailing feed-and-cut.
     /// </summary>
     /// <param name="name">The heading text printed on every label (e.g. a meal's name).</param>
     /// <param name="guids">The guid encoded as a QR code on each label, one physical label per entry, printed in order.</param>
@@ -254,29 +254,29 @@ public class ChitterPrintService(IConfiguration config, IWebHostEnvironment env,
         int headingBlockHeight = (int)Math.Ceiling(headingLines.Count * headingLineHeight);
         int footerBlockHeight = FooterBlockHeight();
 
-        // Render one label per guid: the shared heading, that guid's own QR code centred beneath it, then the divider-and-timestamp footer.
+        // Render one label per guid: that guid's own QR code, the shared heading centred beneath it, then the divider-and-timestamp footer.
         List<PrintSegment> segments = [];
         foreach (Guid guid in guids)
         {
             using SKBitmap qrBitmap = BuildQrBitmap(guid.ToString(), contentWidth);
-            int qrTopY = MarginPx + headingBlockHeight + MarginPx;
-            int totalHeight = qrTopY + qrBitmap.Height + MarginPx + footerBlockHeight + MarginPx;
+            int headingTopY = MarginPx + qrBitmap.Height + MarginPx;
+            int totalHeight = headingTopY + headingBlockHeight + MarginPx + footerBlockHeight + MarginPx;
 
             using SKBitmap bitmap = new(WidthPx, totalHeight);
             bitmap.Erase(SKColors.White);
             using (SKCanvas canvas = new(bitmap))
             {
-                float y = MarginPx + BodyFontSize;
+                float qrX = MarginPx + ((contentWidth - qrBitmap.Width) / 2f);
+                canvas.DrawBitmap(qrBitmap, qrX, MarginPx, qrSampling);
+
+                float y = headingTopY + BodyFontSize;
                 foreach ((string line, bool _) in headingLines)
                 {
                     DrawMixedText(canvas, line, MarginPx, y, headingFonts, paint);
                     y += headingLineHeight;
                 }
 
-                float qrX = MarginPx + ((contentWidth - qrBitmap.Width) / 2f);
-                canvas.DrawBitmap(qrBitmap, qrX, qrTopY, qrSampling);
-
-                DrawFooter(canvas, footerFonts, paint, contentWidth, qrTopY + qrBitmap.Height + MarginPx);
+                DrawFooter(canvas, footerFonts, paint, contentWidth, headingTopY + headingBlockHeight + MarginPx);
             }
 
             // BuildImageSegments already wraps the raster bands with its own leading reset/feed and trailing feed/cut, so each label in the batch prints and cuts as its own separate piece of paper.
