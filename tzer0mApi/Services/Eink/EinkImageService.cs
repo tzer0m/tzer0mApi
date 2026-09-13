@@ -157,16 +157,6 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float EventTimeColumnWidthPx = 90f;
 
     /// <summary>
-    /// Size, in pixels, of an event's coloured calendar marker.
-    /// </summary>
-    private const float EventMarkerSizePx = 8f;
-
-    /// <summary>
-    /// Gap, in pixels, between an event's marker and its time.
-    /// </summary>
-    private const float EventMarkerGapPx = 10f;
-
-    /// <summary>
     /// Height, in pixels, of one event row.
     /// </summary>
     private const float EventRowHeightPx = 46f;
@@ -175,16 +165,6 @@ public class EInkImageService(IWebHostEnvironment env)
     /// Font size, in points, used for a task's "OVERDUE" label.
     /// </summary>
     private const float TaskLabelFontSize = 15f;
-
-    /// <summary>
-    /// Size, in pixels, of a task's square marker.
-    /// </summary>
-    private const float TaskMarkerSizePx = 8f;
-
-    /// <summary>
-    /// Gap, in pixels, between a task's marker and its title.
-    /// </summary>
-    private const float TaskMarkerGapPx = 14f;
 
     /// <summary>
     /// Height, in pixels, of a due-today task row.
@@ -290,20 +270,18 @@ public class EInkImageService(IWebHostEnvironment env)
         float bodyLimitY = HeightPx - BodyBottomPaddingPx;
 
         canvas.DrawText("EVENTS", HomeMarginPx, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
-        float eventTimeX = HomeMarginPx + EventMarkerSizePx + EventMarkerGapPx;
-        float eventTitleX = eventTimeX + EventTimeColumnWidthPx;
+        float eventTitleX = HomeMarginPx + EventTimeColumnWidthPx;
         float eventTitleMaxWidth = columnMidX - eventTitleX - 16f;
         float eventY = columnTop + SectionHeaderGapPx;
         foreach (HomeAssistantEvent calendarEvent in events)
         {
             if (eventY > bodyLimitY)
                 break;
-            SKPaint markerFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
-            canvas.DrawRect(new SKRect(HomeMarginPx, eventY - EventMarkerSizePx - 6f, HomeMarginPx + EventMarkerSizePx, eventY - 6f), markerFill);
+            SKPaint eventFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
             string eventTimeText = calendarEvent.IsAllDay ? "All day" : calendarEvent.Start.ToString("HH:mm");
             string eventTitle = TruncateToWidth(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth);
-            canvas.DrawText(eventTimeText, eventTimeX, eventY, SKTextAlign.Left, eventTimeFont, blackFill);
-            canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
+            canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, eventFill);
+            canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, eventFill);
             eventY += EventRowHeightPx;
         }
         if (events.Count == 0)
@@ -312,7 +290,7 @@ public class EInkImageService(IWebHostEnvironment env)
         canvas.DrawRect(new SKRect(columnMidX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, columnMidX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
 
         float taskColumnX = columnMidX + ColumnGapPx;
-        float taskTitleMaxWidth = WidthPx - HomeMarginPx - (taskColumnX + TaskMarkerSizePx + TaskMarkerGapPx);
+        float taskTitleMaxWidth = WidthPx - HomeMarginPx - taskColumnX;
         canvas.DrawText("TASKS", taskColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
         float taskY = columnTop + SectionHeaderGapPx;
         foreach (HomeAssistantTask task in tasks)
@@ -320,19 +298,16 @@ public class EInkImageService(IWebHostEnvironment env)
             if (taskY > bodyLimitY)
                 break;
             bool isOverdue = task.Status == HomeAssistantTaskStatus.Overdue;
-            SKPaint markerPaint = isOverdue ? redFill : blackFill;
-            canvas.DrawRect(new SKRect(taskColumnX, taskY - TaskMarkerSizePx - 6f, taskColumnX + TaskMarkerSizePx, taskY - 6f), markerPaint);
-            float taskTextX = taskColumnX + TaskMarkerSizePx + TaskMarkerGapPx;
             string taskTitle = TruncateToWidth(task.Title, taskTitleFont, taskTitleMaxWidth);
             if (isOverdue)
             {
-                canvas.DrawText("OVERDUE", taskTextX, taskY - 4f, SKTextAlign.Left, taskLabelFont, redFill);
-                canvas.DrawText(taskTitle, taskTextX, taskY + 16f, SKTextAlign.Left, taskTitleFont, blackFill);
+                canvas.DrawText("OVERDUE", taskColumnX, taskY - 4f, SKTextAlign.Left, taskLabelFont, redFill);
+                canvas.DrawText(taskTitle, taskColumnX, taskY + 16f, SKTextAlign.Left, taskTitleFont, blackFill);
                 taskY += TaskOverdueRowHeightPx;
             }
             else
             {
-                canvas.DrawText(taskTitle, taskTextX, taskY - 3f, SKTextAlign.Left, taskTitleFont, blackFill);
+                canvas.DrawText(taskTitle, taskColumnX, taskY - 3f, SKTextAlign.Left, taskTitleFont, blackFill);
                 taskY += TaskRowHeightPx;
             }
         }
