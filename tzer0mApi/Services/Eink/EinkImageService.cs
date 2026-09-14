@@ -292,7 +292,7 @@ public class EInkImageService(IWebHostEnvironment env)
 
         canvas.DrawText("EVENTS", HomeMarginPx, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
         float eventTitleX = HomeMarginPx + EventTimeColumnWidthPx;
-        float eventTitleMaxWidth = columnMidX - eventTitleX - 16f;
+        float eventTitleMaxWidth = columnMidX - eventTitleX - 24f;
         float eventY = columnTop + SectionHeaderGapPx;
         foreach (HomeAssistantEvent calendarEvent in events)
         {
