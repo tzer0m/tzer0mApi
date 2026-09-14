@@ -16,6 +16,11 @@ public class HomeAssistantEvent
     public DateTime Start { get; set; }
 
     /// <summary>
+    /// The event's end time.
+    /// </summary>
+    public DateTime End { get; set; }
+
+    /// <summary>
     /// Whether the event is an all-day event, with no specific start time.
     /// </summary>
     public bool IsAllDay { get; set; }

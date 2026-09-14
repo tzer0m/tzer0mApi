@@ -162,6 +162,26 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float EventRowHeightPx = 46f;
 
     /// <summary>
+    /// Extra vertical padding, in pixels, added above/below the text when drawing a current event's highlight background.
+    /// </summary>
+    private const float EventHighlightPaddingPx = 6f;
+
+    /// <summary>
+    /// Horizontal inset, in pixels, of a current event's highlight background from the row's left margin.
+    /// </summary>
+    private const float EventHighlightHorizontalPaddingPx = 10f;
+
+    /// <summary>
+    /// Corner radius, in pixels, of a current event's highlight background.
+    /// </summary>
+    private const float EventHighlightCornerRadiusPx = 8f;
+
+    /// <summary>
+    /// Thickness, in pixels, of the strikethrough line drawn through a past event.
+    /// </summary>
+    private const float EventStrikeThicknessPx = 2f;
+
+    /// <summary>
     /// Font size, in points, used for a task's "OVERDUE" label.
     /// </summary>
     private const float TaskLabelFontSize = 15f;
@@ -236,6 +256,7 @@ public class EInkImageService(IWebHostEnvironment env)
         using SKPaint greenFill = new() { Color = SKColors.Lime, IsAntialias = true };
         using SKPaint yellowFill = new() { Color = SKColors.Yellow, IsAntialias = true };
         using SKPaint blueFill = new() { Color = SKColors.Blue, IsAntialias = true };
+        using SKPaint whiteFill = new() { Color = SKColors.White, IsAntialias = true };
 
         using SKBitmap bitmap = new(WidthPx, HeightPx);
         bitmap.Erase(SKColors.White);
@@ -278,10 +299,29 @@ public class EInkImageService(IWebHostEnvironment env)
             if (eventY > bodyLimitY)
                 break;
             SKPaint eventFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
+            bool isPast = calendarEvent.End <= now;
+            bool isCurrent = !isPast && calendarEvent.Start <= now;
             string eventTimeText = calendarEvent.IsAllDay ? "All Day" : calendarEvent.Start.ToString("HH:mm");
             string eventTitle = TruncateToWidth(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth);
-            canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, eventFill);
-            canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, eventFill);
+            if (isCurrent)
+            {
+                SKRect highlightRect = new(HomeMarginPx - EventHighlightHorizontalPaddingPx, eventY + eventTitleFont.Metrics.Ascent - EventHighlightPaddingPx, columnMidX - 16f, eventY + eventTitleFont.Metrics.Descent + EventHighlightPaddingPx);
+                canvas.DrawRoundRect(highlightRect, EventHighlightCornerRadiusPx, EventHighlightCornerRadiusPx, eventFill);
+                canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, whiteFill);
+                canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, whiteFill);
+            }
+            else
+            {
+                canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, eventFill);
+                canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, eventFill);
+                if (isPast)
+                {
+                    float strikeY = eventY + (eventTitleFont.Metrics.Ascent * 0.35f);
+                    float strikeRight = eventTitleX + eventTitleFont.MeasureText(eventTitle);
+                    using SKPaint strikePaint = new() { Color = eventFill.Color, IsAntialias = true, StrokeWidth = EventStrikeThicknessPx, Style = SKPaintStyle.Stroke };
+                    canvas.DrawLine(HomeMarginPx, strikeY, strikeRight, strikeY, strikePaint);
+                }
+            }
             eventY += EventRowHeightPx;
         }
         if (events.Count == 0)

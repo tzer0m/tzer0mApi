@@ -18,4 +18,10 @@ public class HomeAssistantCalendarEventResponse
     /// </summary>
     [JsonPropertyName("start")]
     public HomeAssistantCalendarDateTimeResponse Start { get; set; } = new();
+
+    /// <summary>
+    /// The event's end.
+    /// </summary>
+    [JsonPropertyName("end")]
+    public HomeAssistantCalendarDateTimeResponse End { get; set; } = new();
 }

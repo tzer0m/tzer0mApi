@@ -71,7 +71,8 @@ public class HomeAssistantService(IConfiguration configuration, HttpClient clien
                 {
                     bool isAllDay = calendarEvent.Start.Date is not null;
                     DateTime eventStart = calendarEvent.Start.DateTimeValue ?? calendarEvent.Start.Date!.Value.ToDateTime(TimeOnly.MinValue);
-                    events.Add(new HomeAssistantEvent { Title = calendarEvent.Summary ?? string.Empty, Start = eventStart, IsAllDay = isAllDay, Color = calendar.Color });
+                    DateTime eventEnd = isAllDay ? eventStart.AddDays(1) : (calendarEvent.End.DateTimeValue ?? eventStart);
+                    events.Add(new HomeAssistantEvent { Title = calendarEvent.Summary ?? string.Empty, Start = eventStart, End = eventEnd, IsAllDay = isAllDay, Color = calendar.Color });
                 }
             }
             catch (Exception ex)
