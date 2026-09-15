@@ -325,7 +325,7 @@ public class EInkImageService(IWebHostEnvironment env)
             eventY += EventRowHeightPx;
         }
         if (events.Count == 0)
-            canvas.DrawText("Nothing scheduled", HomeMarginPx, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
+            canvas.DrawText("Nothing Scheduled", HomeMarginPx, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
 
         canvas.DrawRect(new SKRect(columnMidX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, columnMidX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
 
@@ -352,7 +352,7 @@ public class EInkImageService(IWebHostEnvironment env)
             }
         }
         if (tasks.Count == 0)
-            canvas.DrawText("Nothing due", taskColumnX, taskY, SKTextAlign.Left, taskTitleFont, blackFill);
+            canvas.DrawText("Nothing Due", taskColumnX, taskY, SKTextAlign.Left, taskTitleFont, blackFill);
 
         return EncodeRgbPng(bitmap);
     }
