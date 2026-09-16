@@ -342,8 +342,12 @@ public class EInkImageService(IWebHostEnvironment env)
         canvas.DrawText("EVENTS", eventsColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
         float eventTitleX = eventsColumnX + EventTimeColumnWidthPx;
         float eventTitleMaxWidth = dividerTwoX - ColumnTextTrailingPaddingPx - eventTitleX;
+        int elapsedTimedEventCount = timedEvents.Count(calendarEvent => calendarEvent.End <= now);
+        int visibleTimedEventCapacity = CountItemsThatFit(timedEvents, eventTitleFont, eventTitleMaxWidth, columnTop + SectionHeaderGapPx, bodyLimitY);
+        int timedEventStartIndex = elapsedTimedEventCount > 0 ? Math.Min(elapsedTimedEventCount, Math.Max(0, timedEvents.Count - visibleTimedEventCapacity)) : 0;
+        List<HomeAssistantEvent> visibleTimedEvents = [.. timedEvents.Skip(timedEventStartIndex)];
         float eventY = columnTop + SectionHeaderGapPx;
-        foreach (HomeAssistantEvent calendarEvent in timedEvents)
+        foreach (HomeAssistantEvent calendarEvent in visibleTimedEvents)
         {
             if (eventY > bodyLimitY)
                 break;
@@ -473,6 +477,29 @@ public class EInkImageService(IWebHostEnvironment env)
                 hi = mid;
         }
         return text[..Math.Max(lo - 1, 0)].TrimEnd() + ellipsis;
+    }
+
+    /// <summary>
+    /// Counts how many items, starting from the first, fit within the given vertical space when each is wrapped to at most two lines.
+    /// </summary>
+    /// <param name="events">The events to measure, in display order.</param>
+    /// <param name="font">The font each title will be drawn with.</param>
+    /// <param name="maxWidth">The maximum width, in pixels, each line may occupy.</param>
+    /// <param name="startY">The y-position the first item would be drawn at.</param>
+    /// <param name="limitY">The y-position beyond which no more items may be drawn.</param>
+    private static int CountItemsThatFit(List<HomeAssistantEvent> events, SKFont font, float maxWidth, float startY, float limitY)
+    {
+        float y = startY;
+        int count = 0;
+        foreach (HomeAssistantEvent calendarEvent in events)
+        {
+            if (y > limitY)
+                break;
+            int lineCount = WrapToLines(calendarEvent.Title, font, maxWidth, 2).Count;
+            y += (lineCount * WrapLineHeightPx) + ItemGapPx;
+            count++;
+        }
+        return count;
     }
 
     /// <summary>
