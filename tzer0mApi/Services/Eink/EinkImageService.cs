@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using SkiaSharp;
 using tzer0mApi.Models.HomeAssistant;
@@ -157,9 +158,29 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float EventTimeColumnWidthPx = 90f;
 
     /// <summary>
-    /// Height, in pixels, of one event row.
+    /// Fraction of the body's width given to the all-day events column.
     /// </summary>
-    private const float EventRowHeightPx = 46f;
+    private const float AllDayColumnFraction = 0.25f;
+
+    /// <summary>
+    /// Fraction of the body's width given to the timed events column - the remainder goes to the tasks column.
+    /// </summary>
+    private const float EventsColumnFraction = 0.50f;
+
+    /// <summary>
+    /// Space, in pixels, reserved between a column's text and the divider that follows it.
+    /// </summary>
+    private const float ColumnTextTrailingPaddingPx = 24f;
+
+    /// <summary>
+    /// Vertical distance, in pixels, between two wrapped lines of the same list item.
+    /// </summary>
+    private const float WrapLineHeightPx = 26f;
+
+    /// <summary>
+    /// Vertical gap, in pixels, left after one list item before the next one starts.
+    /// </summary>
+    private const float ItemGapPx = 14f;
 
     /// <summary>
     /// Extra vertical padding, in pixels, added above/below the text when drawing a current event's highlight background.
@@ -170,6 +191,11 @@ public class EInkImageService(IWebHostEnvironment env)
     /// Horizontal inset, in pixels, of a current event's highlight background from the row's left margin.
     /// </summary>
     private const float EventHighlightHorizontalPaddingPx = 10f;
+
+    /// <summary>
+    /// Space, in pixels, between a current event's highlight background and the divider that follows it.
+    /// </summary>
+    private const float EventHighlightTrailingPaddingPx = 16f;
 
     /// <summary>
     /// Corner radius, in pixels, of a current event's highlight background.
@@ -187,14 +213,9 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float TaskLabelFontSize = 15f;
 
     /// <summary>
-    /// Height, in pixels, of a due-today task row.
+    /// Vertical gap, in pixels, between an overdue task's "OVERDUE" label and its title.
     /// </summary>
-    private const float TaskRowHeightPx = 42f;
-
-    /// <summary>
-    /// Height, in pixels, of an overdue task row - taller to fit the "OVERDUE" label above the title.
-    /// </summary>
-    private const float TaskOverdueRowHeightPx = 58f;
+    private const float TaskOverdueLabelGapPx = 20f;
 
     /// <summary>
     /// The lookup table used for PNG chunk CRC32 checksums.
@@ -287,72 +308,101 @@ public class EInkImageService(IWebHostEnvironment env)
         canvas.DrawRect(new SKRect(HomeMarginPx, HeaderDividerY, WidthPx - HomeMarginPx, HeaderDividerY + DividerThicknessPx), blackFill);
 
         float columnTop = HeaderDividerY + DividerThicknessPx + BodyTopPaddingPx;
-        float columnMidX = WidthPx / 2f;
         float bodyLimitY = HeightPx - BodyBottomPaddingPx;
+        float bodyWidth = WidthPx - (2f * HomeMarginPx);
+        float allDayColumnX = HomeMarginPx;
+        float dividerOneX = HomeMarginPx + (bodyWidth * AllDayColumnFraction);
+        float eventsColumnX = dividerOneX + ColumnGapPx;
+        float dividerTwoX = HomeMarginPx + (bodyWidth * (AllDayColumnFraction + EventsColumnFraction));
+        float tasksColumnX = dividerTwoX + ColumnGapPx;
+        float tasksColumnRight = WidthPx - HomeMarginPx;
+        List<HomeAssistantEvent> allDayEvents = [.. events.Where(calendarEvent => calendarEvent.IsAllDay)];
+        List<HomeAssistantEvent> timedEvents = [.. events.Where(calendarEvent => !calendarEvent.IsAllDay)];
 
-        canvas.DrawText("EVENTS", HomeMarginPx, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
-        float eventTitleX = HomeMarginPx + EventTimeColumnWidthPx;
-        float eventTitleMaxWidth = columnMidX - eventTitleX - 24f;
+        canvas.DrawText("ALL DAY", allDayColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
+        float allDayColumnMaxWidth = dividerOneX - ColumnTextTrailingPaddingPx - allDayColumnX;
+        float allDayY = columnTop + SectionHeaderGapPx;
+        foreach (HomeAssistantEvent calendarEvent in allDayEvents)
+        {
+            if (allDayY > bodyLimitY)
+                break;
+            SKPaint eventFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
+            foreach (string line in WrapToLines(calendarEvent.Title, eventTitleFont, allDayColumnMaxWidth, 2))
+            {
+                canvas.DrawText(line, allDayColumnX, allDayY, SKTextAlign.Left, eventTitleFont, eventFill);
+                allDayY += WrapLineHeightPx;
+            }
+            allDayY += ItemGapPx;
+        }
+        if (allDayEvents.Count == 0)
+            canvas.DrawText("Nothing Scheduled", allDayColumnX, allDayY, SKTextAlign.Left, eventTitleFont, blackFill);
+
+        canvas.DrawRect(new SKRect(dividerOneX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, dividerOneX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
+
+        canvas.DrawText("EVENTS", eventsColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
+        float eventTitleX = eventsColumnX + EventTimeColumnWidthPx;
+        float eventTitleMaxWidth = dividerTwoX - ColumnTextTrailingPaddingPx - eventTitleX;
         float eventY = columnTop + SectionHeaderGapPx;
-        foreach (HomeAssistantEvent calendarEvent in events)
+        foreach (HomeAssistantEvent calendarEvent in timedEvents)
         {
             if (eventY > bodyLimitY)
                 break;
             SKPaint eventFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
             bool isPast = calendarEvent.End <= now;
             bool isCurrent = !isPast && calendarEvent.Start <= now;
-            string eventTimeText = calendarEvent.IsAllDay ? "All Day" : calendarEvent.Start.ToString("HH:mm");
-            string eventTitle = TruncateToWidth(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth);
+            List<string> titleLines = WrapToLines(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth, 2);
+            SKPaint textFill = isCurrent ? whiteFill : eventFill;
             if (isCurrent)
             {
-                SKRect highlightRect = new(HomeMarginPx - EventHighlightHorizontalPaddingPx, eventY + eventTitleFont.Metrics.Ascent - EventHighlightPaddingPx, columnMidX - 16f, eventY + eventTitleFont.Metrics.Descent + EventHighlightPaddingPx);
+                float highlightBottom = eventY + eventTitleFont.Metrics.Descent + EventHighlightPaddingPx + ((titleLines.Count - 1) * WrapLineHeightPx);
+                SKRect highlightRect = new(eventsColumnX - EventHighlightHorizontalPaddingPx, eventY + eventTitleFont.Metrics.Ascent - EventHighlightPaddingPx, dividerTwoX - EventHighlightTrailingPaddingPx, highlightBottom);
                 canvas.DrawRoundRect(highlightRect, EventHighlightCornerRadiusPx, EventHighlightCornerRadiusPx, eventFill);
-                canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, whiteFill);
-                canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, whiteFill);
             }
-            else
+            canvas.DrawText(calendarEvent.Start.ToString("HH:mm"), eventsColumnX, eventY, SKTextAlign.Left, eventTimeFont, textFill);
+            float lineY = eventY;
+            for (int lineIndex = 0; lineIndex < titleLines.Count; lineIndex++)
             {
-                canvas.DrawText(eventTimeText, HomeMarginPx, eventY, SKTextAlign.Left, eventTimeFont, eventFill);
-                canvas.DrawText(eventTitle, eventTitleX, eventY, SKTextAlign.Left, eventTitleFont, eventFill);
+                canvas.DrawText(titleLines[lineIndex], eventTitleX, lineY, SKTextAlign.Left, eventTitleFont, textFill);
                 if (isPast)
                 {
-                    float strikeY = eventY + (eventTitleFont.Metrics.Ascent * 0.35f);
-                    float strikeRight = eventTitleX + eventTitleFont.MeasureText(eventTitle);
+                    float strikeStartX = lineIndex == 0 ? eventsColumnX : eventTitleX;
+                    float strikeY = lineY + (eventTitleFont.Metrics.Ascent * 0.35f);
+                    float strikeRight = eventTitleX + eventTitleFont.MeasureText(titleLines[lineIndex]);
                     using SKPaint strikePaint = new() { Color = eventFill.Color, IsAntialias = true, StrokeWidth = EventStrikeThicknessPx, Style = SKPaintStyle.Stroke };
-                    canvas.DrawLine(HomeMarginPx, strikeY, strikeRight, strikeY, strikePaint);
+                    canvas.DrawLine(strikeStartX, strikeY, strikeRight, strikeY, strikePaint);
                 }
+                lineY += WrapLineHeightPx;
             }
-            eventY += EventRowHeightPx;
+            eventY = lineY + ItemGapPx;
         }
-        if (events.Count == 0)
-            canvas.DrawText("Nothing Scheduled", HomeMarginPx, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
+        if (timedEvents.Count == 0)
+            canvas.DrawText("Nothing Scheduled", eventsColumnX, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
 
-        canvas.DrawRect(new SKRect(columnMidX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, columnMidX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
+        canvas.DrawRect(new SKRect(dividerTwoX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, dividerTwoX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
 
-        float taskColumnX = columnMidX + ColumnGapPx;
-        float taskTitleMaxWidth = WidthPx - HomeMarginPx - taskColumnX;
-        canvas.DrawText("TASKS", taskColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
+        canvas.DrawText("TASKS", tasksColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
+        float taskTitleMaxWidth = tasksColumnRight - tasksColumnX;
         float taskY = columnTop + SectionHeaderGapPx;
         foreach (HomeAssistantTask task in tasks)
         {
             if (taskY > bodyLimitY)
                 break;
             bool isOverdue = task.Status == HomeAssistantTaskStatus.Overdue;
-            string taskTitle = TruncateToWidth(task.Title, taskTitleFont, taskTitleMaxWidth);
+            List<string> titleLines = WrapToLines(task.Title, taskTitleFont, taskTitleMaxWidth, 2);
             if (isOverdue)
             {
-                canvas.DrawText("OVERDUE", taskColumnX, taskY - 4f, SKTextAlign.Left, taskLabelFont, redFill);
-                canvas.DrawText(taskTitle, taskColumnX, taskY + 16f, SKTextAlign.Left, taskTitleFont, blackFill);
-                taskY += TaskOverdueRowHeightPx;
+                canvas.DrawText("OVERDUE", tasksColumnX, taskY, SKTextAlign.Left, taskLabelFont, redFill);
+                taskY += TaskOverdueLabelGapPx;
             }
-            else
+            foreach (string line in titleLines)
             {
-                canvas.DrawText(taskTitle, taskColumnX, taskY - 3f, SKTextAlign.Left, taskTitleFont, blackFill);
-                taskY += TaskRowHeightPx;
+                canvas.DrawText(line, tasksColumnX, taskY, SKTextAlign.Left, taskTitleFont, blackFill);
+                taskY += WrapLineHeightPx;
             }
+            taskY += ItemGapPx;
         }
         if (tasks.Count == 0)
-            canvas.DrawText("Nothing Due", taskColumnX, taskY, SKTextAlign.Left, taskTitleFont, blackFill);
+            canvas.DrawText("Nothing Due", tasksColumnX, taskY, SKTextAlign.Left, taskTitleFont, blackFill);
 
         return EncodeRgbPng(bitmap);
     }
@@ -423,6 +473,34 @@ public class EInkImageService(IWebHostEnvironment env)
                 hi = mid;
         }
         return text[..Math.Max(lo - 1, 0)].TrimEnd() + ellipsis;
+    }
+
+    /// <summary>
+    /// Wraps text to at most the given number of lines, word-wrapping within the given width and ellipsising the final line if the text doesn't fit.
+    /// </summary>
+    /// <param name="text">The text to wrap.</param>
+    /// <param name="font">The font the text will be drawn with.</param>
+    /// <param name="maxWidth">The maximum width, in pixels, each line may occupy.</param>
+    /// <param name="maxLines">The maximum number of lines to produce.</param>
+    private static List<string> WrapToLines(string text, SKFont font, float maxWidth, int maxLines)
+    {
+        string[] words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        List<string> lines = [];
+        int wordIndex = 0;
+        while (wordIndex < words.Length && lines.Count < maxLines - 1)
+        {
+            string line = words[wordIndex];
+            wordIndex++;
+            while (wordIndex < words.Length && font.MeasureText($"{line} {words[wordIndex]}") <= maxWidth)
+            {
+                line = $"{line} {words[wordIndex]}";
+                wordIndex++;
+            }
+            lines.Add(line);
+        }
+        if (wordIndex < words.Length)
+            lines.Add(TruncateToWidth(string.Join(' ', words[wordIndex..]), font, maxWidth));
+        return lines;
     }
 
     /// <summary>
