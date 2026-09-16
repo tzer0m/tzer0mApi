@@ -4,6 +4,7 @@ using System.Text;
 using SkiaSharp;
 using tzer0mApi.Models.HomeAssistant;
 using tzer0mApi.Models.Kuma;
+using tzer0mApi.Models.Rss;
 using tzer0mApi.Models.SmarterMeter;
 
 namespace tzer0mApi.Services.EInk;
@@ -355,6 +356,26 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float MeterGridBorderThicknessPx = 2f;
 
     /// <summary>
+    /// Height, in pixels, of each row in the RSS feed list.
+    /// </summary>
+    private const float RssRowHeightPx = 32f;
+
+    /// <summary>
+    /// Width, in pixels, of the RSS feed list's time column.
+    /// </summary>
+    private const float RssTimeColumnWidthPx = 80f;
+
+    /// <summary>
+    /// Width, in pixels, of the RSS feed list's title column.
+    /// </summary>
+    private const float RssTitleColumnWidthPx = 150f;
+
+    /// <summary>
+    /// Gap, in pixels, between the RSS feed list's columns.
+    /// </summary>
+    private const float RssColumnGapPx = 24f;
+
+    /// <summary>
     /// The lookup table used for PNG chunk CRC32 checksums.
     /// </summary>
     private static readonly uint[] CrcTable = BuildCrcTable();
@@ -464,7 +485,7 @@ public class EInkImageService(IWebHostEnvironment env)
             if (allDayY > bodyLimitY)
                 break;
             SKPaint eventFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
-            foreach (string line in WrapToLines(calendarEvent.Title, eventTitleFont, allDayColumnMaxWidth, 2))
+            foreach (string line in WrapToLines(RemoveUnsupportedCharacters(calendarEvent.Title, eventTitleFont), eventTitleFont, allDayColumnMaxWidth, 2))
             {
                 canvas.DrawText(line, allDayColumnX, allDayY, SKTextAlign.Left, eventTitleFont, eventFill);
                 allDayY += WrapLineHeightPx;
@@ -491,7 +512,7 @@ public class EInkImageService(IWebHostEnvironment env)
             SKPaint eventFill = GetColorFill(calendarEvent.Color, blackFill, redFill, greenFill, yellowFill, blueFill);
             bool isPast = calendarEvent.End <= now;
             bool isCurrent = !isPast && calendarEvent.Start <= now;
-            List<string> titleLines = WrapToLines(calendarEvent.Title, eventTitleFont, eventTitleMaxWidth, 2);
+            List<string> titleLines = WrapToLines(RemoveUnsupportedCharacters(calendarEvent.Title, eventTitleFont), eventTitleFont, eventTitleMaxWidth, 2);
             SKPaint textFill = isCurrent ? whiteFill : eventFill;
             if (isCurrent)
             {
@@ -529,7 +550,7 @@ public class EInkImageService(IWebHostEnvironment env)
             if (taskY > bodyLimitY)
                 break;
             bool isOverdue = task.Status == HomeAssistantTaskStatus.Overdue;
-            List<string> titleLines = WrapToLines(task.Title, taskTitleFont, taskTitleMaxWidth, 2);
+            List<string> titleLines = WrapToLines(RemoveUnsupportedCharacters(task.Title, taskTitleFont), taskTitleFont, taskTitleMaxWidth, 2);
             if (isOverdue)
             {
                 canvas.DrawText("OVERDUE", tasksColumnX, taskY, SKTextAlign.Left, taskLabelFont, redFill);
@@ -738,6 +759,51 @@ public class EInkImageService(IWebHostEnvironment env)
     }
 
     /// <summary>
+    /// Renders the RSS feed as a plain list of rows - time, title, and content, as many as fit - for display D. Matches the font used for the home screen's event list.
+    /// </summary>
+    /// <param name="items">The feed's items, newest first, or null if the feed could not be fetched.</param>
+    /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
+    public byte[] RenderRssFeed(List<RssFeedItem>? items)
+    {
+        using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
+        using SKTypeface mediumTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Medium.ttf");
+        using SKFont timeFont = new(boldTypeface, EventFontSize);
+        using SKFont textFont = new(mediumTypeface, EventFontSize);
+        using SKPaint blackFill = new() { Color = SKColors.Black, IsAntialias = true };
+
+        using SKBitmap bitmap = new(WidthPx, HeightPx);
+        bitmap.Erase(SKColors.White);
+        using SKCanvas canvas = new(bitmap);
+
+        if (items is null)
+        {
+            canvas.DrawText("Unable to reach the RSS feed", HomeMarginPx, HeightPx / 2f, SKTextAlign.Left, textFont, blackFill);
+            return EncodeRgbPng(bitmap);
+        }
+
+        float bodyTop = HomeMarginPx;
+        float bodyBottom = HeightPx - HomeMarginPx;
+        int maxRowCount = (int)((bodyBottom - bodyTop) / RssRowHeightPx);
+        float titleColumnX = HomeMarginPx + RssTimeColumnWidthPx + RssColumnGapPx;
+        float contentColumnX = titleColumnX + RssTitleColumnWidthPx + RssColumnGapPx;
+        float contentMaxWidth = (WidthPx - HomeMarginPx) - contentColumnX;
+
+        for (int rowIndex = 0; rowIndex < Math.Min(items.Count, maxRowCount); rowIndex++)
+        {
+            RssFeedItem item = items[rowIndex];
+            float rowCenter = bodyTop + (rowIndex * RssRowHeightPx) + (RssRowHeightPx / 2f);
+            float baseline = rowCenter - ((textFont.Metrics.Ascent + textFont.Metrics.Descent) / 2f);
+            string title = RemoveUnsupportedCharacters(item.Title, textFont);
+            string content = TruncateToWidth(RemoveUnsupportedCharacters(item.Content, textFont), textFont, contentMaxWidth);
+            canvas.DrawText(item.PublishedAt.ToLocalTime().ToString("HH:mm"), HomeMarginPx, baseline, SKTextAlign.Left, timeFont, blackFill);
+            canvas.DrawText(title, titleColumnX, baseline, SKTextAlign.Left, textFont, blackFill);
+            canvas.DrawText(content, contentColumnX, baseline, SKTextAlign.Left, textFont, blackFill);
+        }
+
+        return EncodeRgbPng(bitmap);
+    }
+
+    /// <summary>
     /// Renders a placeholder display, for a display letter without dedicated content yet - the letter and a small caption, in white, over the letter's assigned colour.
     /// </summary>
     /// <param name="letter">The display letter, e.g. "C".</param>
@@ -824,6 +890,20 @@ public class EInkImageService(IWebHostEnvironment env)
     }
 
     /// <summary>
+    /// Removes any characters the given font can't render, such as emoji, so text pulled from external sources - calendar events, tasks, RSS items - never produces missing-glyph boxes on the e-ink display.
+    /// </summary>
+    /// <param name="text">The text to sanitize.</param>
+    /// <param name="font">The font the text will be drawn with.</param>
+    private static string RemoveUnsupportedCharacters(string text, SKFont font)
+    {
+        StringBuilder builder = new(text.Length);
+        foreach (Rune rune in text.EnumerateRunes())
+            if (font.ContainsGlyph(rune.Value))
+                builder.Append(rune.ToString());
+        return builder.ToString();
+    }
+
+    /// <summary>
     /// Counts how many items, starting from the first, fit within the given vertical space when each is wrapped to at most two lines.
     /// </summary>
     /// <param name="events">The events to measure, in display order.</param>
@@ -839,7 +919,7 @@ public class EInkImageService(IWebHostEnvironment env)
         {
             if (y > limitY)
                 break;
-            int lineCount = WrapToLines(calendarEvent.Title, font, maxWidth, 2).Count;
+            int lineCount = WrapToLines(RemoveUnsupportedCharacters(calendarEvent.Title, font), font, maxWidth, 2).Count;
             y += (lineCount * WrapLineHeightPx) + ItemGapPx;
             count++;
         }

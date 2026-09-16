@@ -5,6 +5,7 @@ using tzer0mApi.Services.HomeAssistant;
 using tzer0mApi.Services.Keys;
 using tzer0mApi.Services.Kuma;
 using tzer0mApi.Services.Middleware;
+using tzer0mApi.Services.Rss;
 using tzer0mApi.Services.SmarterMeter;
 using tzer0mApi.Services.Ting;
 
@@ -22,6 +23,7 @@ builder.Services.AddHttpClient<KumaService>();
 builder.Services.AddSingleton<QuoteService>();
 builder.Services.AddSingleton<PackingListService>();
 builder.Services.AddHttpClient<GeminiOcrService>();
+builder.Services.AddHttpClient<RssService>();
 builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddScoped<KeysService>();
 builder.Services.AddScoped<CalculationService>();

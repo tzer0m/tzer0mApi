@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Mvc;
 using SkiaSharp;
 using tzer0mApi.Models.HomeAssistant;
 using tzer0mApi.Models.Kuma;
+using tzer0mApi.Models.Rss;
 using tzer0mApi.Models.SmarterMeter;
 using tzer0mApi.Services.EInk;
 using tzer0mApi.Services.HomeAssistant;
 using tzer0mApi.Services.Kuma;
+using tzer0mApi.Services.Rss;
 using tzer0mApi.Services.SmarterMeter;
 
 namespace tzer0mApi.Controllers;
@@ -18,14 +20,15 @@ namespace tzer0mApi.Controllers;
 /// <param name="kumaService">The service used to fetch monitor status for display B.</param>
 /// <param name="databaseService">The service used to fetch meter readings for display C.</param>
 /// <param name="calculationService">The service used to calculate usage and cost for display C.</param>
+/// <param name="rssService">The service used to fetch and parse the RSS feed for display D.</param>
 /// <param name="config">Configuration, used to resolve the SmarterMeter capture interval.</param>
 /// <param name="logger">The logger.</param>
 [ApiController]
 [Route("EInk")]
-public class EInkController(EInkImageService eInkImageService, HomeAssistantService homeAssistantService, KumaService kumaService, DatabaseService databaseService, CalculationService calculationService, IConfiguration config, ILogger<EInkController> logger) : ControllerBase
+public class EInkController(EInkImageService eInkImageService, HomeAssistantService homeAssistantService, KumaService kumaService, DatabaseService databaseService, CalculationService calculationService, RssService rssService, IConfiguration config, ILogger<EInkController> logger) : ControllerBase
 {
     /// <summary>
-    /// Renders the display shown for the given button letter - the home screen for A, the Kuma status board for B, the SmarterMeter status board for C, a coloured placeholder for D-E until they have dedicated content (D green, E blue - the remaining non-black/white inks the Spectra 6 panel can actually produce).
+    /// Renders the display shown for the given button letter - the home screen for A, the Kuma status board for B, the SmarterMeter status board for C, the RSS feed for D, a coloured placeholder for E until it has dedicated content (blue - the remaining non-black/white ink the Spectra 6 panel can actually produce).
     /// </summary>
     /// <param name="letter">The button letter, A-E.</param>
     /// <returns>An 800x480 PNG image, or 404 if the letter isn't A-E.</returns>
@@ -39,9 +42,10 @@ public class EInkController(EInkImageService eInkImageService, HomeAssistantServ
             return File(await RenderKumaStatusAsync(), "image/png");
         if (normalizedLetter == "C")
             return File(await RenderMeterSummaryAsync(), "image/png");
+        if (normalizedLetter == "D")
+            return File(await RenderRssFeedAsync(), "image/png");
         SKColor? colour = normalizedLetter switch
         {
-            "D" => SKColors.Lime,
             "E" => SKColors.Blue,
             _ => null
         };
@@ -91,6 +95,15 @@ public class EInkController(EInkImageService eInkImageService, HomeAssistantServ
         DateTime cutoff = DateTime.UtcNow.AddHours(-lookbackHours);
         decimal successRate = Math.Round(Math.Min(readings.Count(reading => reading.CapturedAt >= cutoff) / (decimal)expectedReadings * 100m, 100m), 1);
         return calculationService.Calculate(readings, successRate, captureIntervalHours);
+    }
+
+    /// <summary>
+    /// Fetches the RSS feed's items and renders the feed list - a failed fetch renders a simple unavailable message rather than taking down the whole display.
+    /// </summary>
+    private async Task<byte[]> RenderRssFeedAsync()
+    {
+        List<RssFeedItem>? items = await TryGetAsync(rssService.GetItemsAsync, "items from the RSS feed");
+        return eInkImageService.RenderRssFeed(items);
     }
 
     /// <summary>
