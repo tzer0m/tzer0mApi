@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using SkiaSharp;
 using tzer0mApi.Models.HomeAssistant;
+using tzer0mApi.Models.Kuma;
 
 namespace tzer0mApi.Services.EInk;
 
@@ -218,6 +219,66 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float TaskOverdueLabelGapPx = 20f;
 
     /// <summary>
+    /// Font size, in points, used for the Kuma status board's overall status line.
+    /// </summary>
+    private const float KumaStatusLineFontSize = 32f;
+
+    /// <summary>
+    /// Baseline y-position, in pixels, of the Kuma status board's overall status line.
+    /// </summary>
+    private const float KumaStatusLineBaselineY = 60f;
+
+    /// <summary>
+    /// Radius, in pixels, of the Kuma status board's overall status icon.
+    /// </summary>
+    private const float KumaStatusIconRadiusPx = 18f;
+
+    /// <summary>
+    /// Gap, in pixels, between the Kuma status board's overall status icon and its text.
+    /// </summary>
+    private const float KumaStatusIconTextGapPx = 16f;
+
+    /// <summary>
+    /// Y-position, in pixels, of the divider below the Kuma status board's overall status line.
+    /// </summary>
+    private const float KumaDividerY = 78f;
+
+    /// <summary>
+    /// Width, in pixels, of the Kuma status board's host name column.
+    /// </summary>
+    private const float KumaHostColumnWidthPx = 160f;
+
+    /// <summary>
+    /// Width, in pixels, of the Kuma status board's uptime column.
+    /// </summary>
+    private const float KumaUptimeColumnWidthPx = 110f;
+
+    /// <summary>
+    /// Width, in pixels, of the Kuma status board's up-count column.
+    /// </summary>
+    private const float KumaUpColumnWidthPx = 70f;
+
+    /// <summary>
+    /// Width, in pixels, of the Kuma status board's total-monitor-count column.
+    /// </summary>
+    private const float KumaTotalColumnWidthPx = 70f;
+
+    /// <summary>
+    /// Height, in pixels, of a tick in the Kuma status board's recent-checks history.
+    /// </summary>
+    private const float KumaTickHeightPx = 20f;
+
+    /// <summary>
+    /// Stroke thickness, in pixels, of a tick in the Kuma status board's recent-checks history.
+    /// </summary>
+    private const float KumaTickThicknessPx = 4f;
+
+    /// <summary>
+    /// Target horizontal spacing, in pixels, between ticks in the Kuma status board's recent-checks history - used to work out how many ticks fit.
+    /// </summary>
+    private const float KumaTickSpacingPx = 8f;
+
+    /// <summary>
     /// The lookup table used for PNG chunk CRC32 checksums.
     /// </summary>
     private static readonly uint[] CrcTable = BuildCrcTable();
@@ -412,9 +473,93 @@ public class EInkImageService(IWebHostEnvironment env)
     }
 
     /// <summary>
+    /// Renders the Kuma status board - an overall status banner followed by each host's uptime, monitor count, and recent check history - to an 800x480 PNG, for display B.
+    /// </summary>
+    /// <param name="summary">The status summary fetched from Kuma, or null if it could not be fetched.</param>
+    /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
+    public byte[] RenderKumaStatus(KumaStatusSummary? summary)
+    {
+        using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
+        using SKTypeface mediumTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Medium.ttf");
+        using SKFont statusFont = new(boldTypeface, KumaStatusLineFontSize);
+        using SKFont columnHeaderFont = new(boldTypeface, SectionHeaderFontSize);
+        using SKFont hostNameFont = new(boldTypeface, EventFontSize);
+        using SKFont rowValueFont = new(mediumTypeface, EventFontSize);
+        using SKFont upCountFont = new(boldTypeface, EventFontSize);
+        using SKPaint blackFill = new() { Color = SKColors.Black, IsAntialias = true };
+        using SKPaint redFill = new() { Color = SKColors.Red, IsAntialias = true };
+        using SKPaint greenFill = new() { Color = SKColors.Lime, IsAntialias = true };
+        using SKPaint yellowFill = new() { Color = SKColors.Yellow, IsAntialias = true };
+        using SKPaint blueFill = new() { Color = SKColors.Blue, IsAntialias = true };
+        using SKPaint whiteFill = new() { Color = SKColors.White, IsAntialias = true };
+
+        using SKBitmap bitmap = new(WidthPx, HeightPx);
+        bitmap.Erase(SKColors.White);
+        using SKCanvas canvas = new(bitmap);
+
+        if (summary is null)
+        {
+            canvas.DrawText("Unable to reach Kuma", HomeMarginPx, KumaStatusLineBaselineY, SKTextAlign.Left, statusFont, blackFill);
+            return EncodeRgbPng(bitmap);
+        }
+
+        (string statusText, SKPaint statusFill) = GetStatusDisplay(summary.OverallStatus, blackFill, redFill, greenFill, yellowFill, blueFill);
+        float iconCenterX = HomeMarginPx + KumaStatusIconRadiusPx;
+        float iconCenterY = KumaStatusLineBaselineY - (KumaStatusLineFontSize * 0.32f);
+        DrawStatusIcon(canvas, summary.OverallStatus, iconCenterX, iconCenterY, KumaStatusIconRadiusPx, statusFill, whiteFill);
+        canvas.DrawText(statusText, iconCenterX + KumaStatusIconRadiusPx + KumaStatusIconTextGapPx, KumaStatusLineBaselineY, SKTextAlign.Left, statusFont, statusFill);
+
+        float hostColumnX = HomeMarginPx;
+        float uptimeColumnX = hostColumnX + KumaHostColumnWidthPx;
+        float upColumnX = uptimeColumnX + KumaUptimeColumnWidthPx;
+        float totalColumnX = upColumnX + KumaUpColumnWidthPx;
+        float dividerX = totalColumnX + KumaTotalColumnWidthPx;
+        float historyColumnX = dividerX + ColumnGapPx;
+        float historyColumnRight = WidthPx - HomeMarginPx;
+        float columnTop = KumaDividerY + DividerThicknessPx + BodyTopPaddingPx;
+        canvas.DrawText("HOST", hostColumnX, columnTop, SKTextAlign.Left, columnHeaderFont, blackFill);
+        canvas.DrawText("UPTIME", uptimeColumnX, columnTop, SKTextAlign.Left, columnHeaderFont, blackFill);
+        canvas.DrawText("UP", upColumnX, columnTop, SKTextAlign.Left, columnHeaderFont, blackFill);
+        canvas.DrawText("TOTAL", totalColumnX, columnTop, SKTextAlign.Left, columnHeaderFont, blackFill);
+        canvas.DrawText("HISTORY", historyColumnX, columnTop, SKTextAlign.Left, columnHeaderFont, blackFill);
+
+        float bodyLimitY = HeightPx - BodyBottomPaddingPx;
+        int hostCount = Math.Max(summary.Hosts.Count, 1);
+        float rowHeight = (bodyLimitY - columnTop) / hostCount;
+        float historyColumnWidth = historyColumnRight - historyColumnX;
+        int maxTickCount = Math.Max((int)(historyColumnWidth / KumaTickSpacingPx), 1);
+
+        for (int rowIndex = 0; rowIndex < summary.Hosts.Count; rowIndex++)
+        {
+            KumaHostStatus host = summary.Hosts[rowIndex];
+            float rowCenter = columnTop + (rowIndex * rowHeight) + (rowHeight / 2f);
+            float textBaseline = rowCenter - ((rowValueFont.Metrics.Ascent + rowValueFont.Metrics.Descent) / 2f);
+            canvas.DrawText(host.Name, hostColumnX, textBaseline, SKTextAlign.Left, hostNameFont, blackFill);
+            canvas.DrawText($"{host.UptimeRatio:P2}", uptimeColumnX, textBaseline, SKTextAlign.Left, rowValueFont, blackFill);
+            SKPaint upCountFill = host.UpCount == host.TotalCount ? greenFill : redFill;
+            canvas.DrawText(host.UpCount.ToString(), upColumnX, textBaseline, SKTextAlign.Left, upCountFont, upCountFill);
+            canvas.DrawText(host.TotalCount.ToString(), totalColumnX, textBaseline, SKTextAlign.Left, rowValueFont, blackFill);
+
+            List<bool> displayedChecks = [.. host.RecentCheckGroups.TakeLast(maxTickCount)];
+            float tickSpacing = displayedChecks.Count > 1 ? historyColumnWidth / (displayedChecks.Count - 1) : 0f;
+            float tickTop = rowCenter - (KumaTickHeightPx / 2f);
+            float tickBottom = rowCenter + (KumaTickHeightPx / 2f);
+            using SKPaint tickPaint = new() { IsAntialias = true, StrokeWidth = KumaTickThicknessPx, StrokeCap = SKStrokeCap.Round };
+            for (int tickIndex = 0; tickIndex < displayedChecks.Count; tickIndex++)
+            {
+                float tickX = historyColumnX + (tickIndex * tickSpacing);
+                tickPaint.Color = displayedChecks[tickIndex] ? SKColors.Lime : SKColors.Red;
+                canvas.DrawLine(tickX, tickTop, tickX, tickBottom, tickPaint);
+            }
+        }
+
+        return EncodeRgbPng(bitmap);
+    }
+
+    /// <summary>
     /// Renders a placeholder display, for a display letter without dedicated content yet - the letter and a small caption, in white, over the letter's assigned colour.
     /// </summary>
-    /// <param name="letter">The display letter, e.g. "B".</param>
+    /// <param name="letter">The display letter, e.g. "C".</param>
     /// <param name="colour">The display's assigned background colour.</param>
     /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
     public byte[] RenderPlaceholder(string letter, SKColor colour)
@@ -452,6 +597,24 @@ public class EInkImageService(IWebHostEnvironment env)
         "Yellow" => yellowFill,
         "Blue" => blueFill,
         _ => blackFill
+    };
+
+    /// <summary>
+    /// Picks the status line's text and paint for the given overall status, matching the states Kuma's own status page shows.
+    /// </summary>
+    /// <param name="status">The overall status to display.</param>
+    /// <param name="blackFill">The black paint, used as a fallback for an unrecognised status.</param>
+    /// <param name="redFill">The red paint.</param>
+    /// <param name="greenFill">The green paint.</param>
+    /// <param name="yellowFill">The yellow paint.</param>
+    /// <param name="blueFill">The blue paint.</param>
+    private static (string Text, SKPaint Fill) GetStatusDisplay(KumaOverallStatus status, SKPaint blackFill, SKPaint redFill, SKPaint greenFill, SKPaint yellowFill, SKPaint blueFill) => status switch
+    {
+        KumaOverallStatus.AllUp => ("All Systems Operational", greenFill),
+        KumaOverallStatus.PartialDown => ("Partially Degraded Service", yellowFill),
+        KumaOverallStatus.AllDown => ("Degraded Service", redFill),
+        KumaOverallStatus.Maintenance => ("Under Maintenance", blueFill),
+        _ => ("Status Unavailable", blackFill)
     };
 
     /// <summary>
@@ -571,6 +734,40 @@ public class EInkImageService(IWebHostEnvironment env)
             case WeatherIconKind.Cloudy:
             default:
                 DrawCloud(canvas, centerX, centerY, radius, fill);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Draws the status line's icon - a filled circle in the status's colour with a simple check, exclamation, cross, or wrench mark - centred at the given point.
+    /// </summary>
+    /// <param name="canvas">The canvas to draw on.</param>
+    /// <param name="status">The overall status to draw the icon for.</param>
+    /// <param name="centerX">The icon's horizontal centre.</param>
+    /// <param name="centerY">The icon's vertical centre.</param>
+    /// <param name="radius">The icon's overall radius.</param>
+    /// <param name="fill">The paint to fill the circle with.</param>
+    /// <param name="markFill">The paint to draw the mark with.</param>
+    private static void DrawStatusIcon(SKCanvas canvas, KumaOverallStatus status, float centerX, float centerY, float radius, SKPaint fill, SKPaint markFill)
+    {
+        canvas.DrawCircle(centerX, centerY, radius, fill);
+        using SKPaint markPaint = new() { Color = markFill.Color, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = radius * 0.28f, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
+        switch (status)
+        {
+            case KumaOverallStatus.AllUp:
+                canvas.DrawLine(centerX - (radius * 0.45f), centerY, centerX - (radius * 0.1f), centerY + (radius * 0.35f), markPaint);
+                canvas.DrawLine(centerX - (radius * 0.1f), centerY + (radius * 0.35f), centerX + (radius * 0.5f), centerY - (radius * 0.35f), markPaint);
+                break;
+            case KumaOverallStatus.PartialDown:
+                canvas.DrawLine(centerX, centerY - (radius * 0.5f), centerX, centerY + (radius * 0.1f), markPaint);
+                canvas.DrawCircle(centerX, centerY + (radius * 0.45f), radius * 0.09f, markFill);
+                break;
+            case KumaOverallStatus.AllDown:
+                canvas.DrawLine(centerX - (radius * 0.4f), centerY - (radius * 0.4f), centerX + (radius * 0.4f), centerY + (radius * 0.4f), markPaint);
+                canvas.DrawLine(centerX - (radius * 0.4f), centerY + (radius * 0.4f), centerX + (radius * 0.4f), centerY - (radius * 0.4f), markPaint);
+                break;
+            case KumaOverallStatus.Maintenance:
+                canvas.DrawLine(centerX - (radius * 0.45f), centerY, centerX + (radius * 0.45f), centerY, markPaint);
                 break;
         }
     }
