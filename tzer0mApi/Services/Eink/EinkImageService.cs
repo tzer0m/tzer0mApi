@@ -4,6 +4,7 @@ using System.Text;
 using SkiaSharp;
 using tzer0mApi.Models.HomeAssistant;
 using tzer0mApi.Models.Kuma;
+using tzer0mApi.Models.SmarterMeter;
 
 namespace tzer0mApi.Services.EInk;
 
@@ -279,6 +280,81 @@ public class EInkImageService(IWebHostEnvironment env)
     private const float KumaTickSpacingPx = 8f;
 
     /// <summary>
+    /// Height, in pixels, of each of the SmarterMeter board's three top boxes (current reading, last read, success rate).
+    /// </summary>
+    private const float MeterTopBoxHeightPx = 76f;
+
+    /// <summary>
+    /// Gap, in pixels, between the SmarterMeter board's three top boxes.
+    /// </summary>
+    private const float MeterTopBoxGapPx = 16f;
+
+    /// <summary>
+    /// Corner radius, in pixels, of the SmarterMeter board's top boxes.
+    /// </summary>
+    private const float MeterTopBoxCornerRadiusPx = 10f;
+
+    /// <summary>
+    /// Relative width unit of the SmarterMeter board's current-reading box, against <see cref="MeterLastReadBoxWidthUnits"/> and <see cref="MeterSuccessBoxWidthUnits"/>.
+    /// </summary>
+    private const float MeterReadingBoxWidthUnits = 2f;
+
+    /// <summary>
+    /// Relative width unit of the SmarterMeter board's last-read box, against <see cref="MeterReadingBoxWidthUnits"/> and <see cref="MeterSuccessBoxWidthUnits"/>.
+    /// </summary>
+    private const float MeterLastReadBoxWidthUnits = 2f;
+
+    /// <summary>
+    /// Relative width unit of the SmarterMeter board's success-rate box, against <see cref="MeterReadingBoxWidthUnits"/> and <see cref="MeterLastReadBoxWidthUnits"/>.
+    /// </summary>
+    private const float MeterSuccessBoxWidthUnits = 1f;
+
+    /// <summary>
+    /// Font size, in points, used for the SmarterMeter board's current reading.
+    /// </summary>
+    private const float MeterReadingFontSize = 40f;
+
+    /// <summary>
+    /// Font size, in points, used for the SmarterMeter board's "kWh" unit suffix.
+    /// </summary>
+    private const float MeterReadingUnitFontSize = 18f;
+
+    /// <summary>
+    /// Font size, in points, used for the SmarterMeter board's last-read and success-rate text.
+    /// </summary>
+    private const float MeterInfoFontSize = 26f;
+
+    /// <summary>
+    /// Corner radius, in pixels, of the SmarterMeter board's usage/cost grid.
+    /// </summary>
+    private const float MeterGridCornerRadiusPx = 10f;
+
+    /// <summary>
+    /// Width, in pixels, of the SmarterMeter board's grid label column ("kWh"/"£").
+    /// </summary>
+    private const float MeterGridLabelColumnWidthPx = 90f;
+
+    /// <summary>
+    /// Height, in pixels, of the SmarterMeter board's grid header row ("Today"/"7d"/"30d").
+    /// </summary>
+    private const float MeterGridHeaderRowHeightPx = 58f;
+
+    /// <summary>
+    /// Font size, in points, used for the SmarterMeter board's grid headers and row labels.
+    /// </summary>
+    private const float MeterGridHeaderFontSize = 20f;
+
+    /// <summary>
+    /// Font size, in points, used for the SmarterMeter board's grid values.
+    /// </summary>
+    private const float MeterGridValueFontSize = 40f;
+
+    /// <summary>
+    /// Stroke thickness, in pixels, of the SmarterMeter board's box and grid borders.
+    /// </summary>
+    private const float MeterGridBorderThicknessPx = 2f;
+
+    /// <summary>
     /// The lookup table used for PNG chunk CRC32 checksums.
     /// </summary>
     private static readonly uint[] CrcTable = BuildCrcTable();
@@ -552,6 +628,111 @@ public class EInkImageService(IWebHostEnvironment env)
                 canvas.DrawLine(tickX, tickTop, tickX, tickBottom, tickPaint);
             }
         }
+
+        return EncodeRgbPng(bitmap);
+    }
+
+    /// <summary>
+    /// Renders the SmarterMeter status board - the current reading, last read time, and capture success rate, followed by usage and cost for today, the last 7 days, and the last 30 days - to an 800x480 PNG, for display C. Matches the layout of the HASmarterMeterCard Lovelace card.
+    /// </summary>
+    /// <param name="summary">The usage and cost summary, or null if it could not be calculated.</param>
+    /// <returns>The rendered image, encoded as a truecolor PNG.</returns>
+    public byte[] RenderMeterSummary(MeterSummary? summary)
+    {
+        using SKTypeface boldTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Bold.ttf");
+        using SKTypeface mediumTypeface = LoadTypeface("Assets/Fonts/SpaceGrotesk-Medium.ttf");
+        using SKFont readingFont = new(boldTypeface, MeterReadingFontSize);
+        using SKFont readingUnitFont = new(mediumTypeface, MeterReadingUnitFontSize);
+        using SKFont infoFont = new(boldTypeface, MeterInfoFontSize);
+        using SKFont gridHeaderFont = new(boldTypeface, MeterGridHeaderFontSize);
+        using SKFont gridValueFont = new(boldTypeface, MeterGridValueFontSize);
+        using SKPaint blackFill = new() { Color = SKColors.Black, IsAntialias = true };
+        using SKPaint borderPaint = new() { Color = SKColors.Black, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = MeterGridBorderThicknessPx };
+
+        using SKBitmap bitmap = new(WidthPx, HeightPx);
+        bitmap.Erase(SKColors.White);
+        using SKCanvas canvas = new(bitmap);
+
+        if (summary is null)
+        {
+            canvas.DrawText("Unable to reach SmarterMeter", HomeMarginPx, HeightPx / 2f, SKTextAlign.Left, infoFont, blackFill);
+            return EncodeRgbPng(bitmap);
+        }
+
+        float bodyWidth = WidthPx - (2f * HomeMarginPx);
+        float topRowTop = HomeMarginPx;
+        float topRowBottom = topRowTop + MeterTopBoxHeightPx;
+        float availableTopRowWidth = bodyWidth - (2f * MeterTopBoxGapPx);
+        float topBoxTotalUnits = MeterReadingBoxWidthUnits + MeterLastReadBoxWidthUnits + MeterSuccessBoxWidthUnits;
+        float topBoxUnitWidth = availableTopRowWidth / topBoxTotalUnits;
+        float readingBoxWidth = topBoxUnitWidth * MeterReadingBoxWidthUnits;
+        float lastReadBoxWidth = topBoxUnitWidth * MeterLastReadBoxWidthUnits;
+        float successBoxWidth = topBoxUnitWidth * MeterSuccessBoxWidthUnits;
+        float readingBoxX = HomeMarginPx;
+        float lastReadBoxX = readingBoxX + readingBoxWidth + MeterTopBoxGapPx;
+        float successBoxX = lastReadBoxX + lastReadBoxWidth + MeterTopBoxGapPx;
+        SKRect readingBox = new(readingBoxX, topRowTop, readingBoxX + readingBoxWidth, topRowBottom);
+        SKRect lastReadBox = new(lastReadBoxX, topRowTop, lastReadBoxX + lastReadBoxWidth, topRowBottom);
+        SKRect successBox = new(successBoxX, topRowTop, successBoxX + successBoxWidth, topRowBottom);
+        canvas.DrawRoundRect(readingBox, MeterTopBoxCornerRadiusPx, MeterTopBoxCornerRadiusPx, borderPaint);
+        canvas.DrawRoundRect(lastReadBox, MeterTopBoxCornerRadiusPx, MeterTopBoxCornerRadiusPx, borderPaint);
+        canvas.DrawRoundRect(successBox, MeterTopBoxCornerRadiusPx, MeterTopBoxCornerRadiusPx, borderPaint);
+
+        string readingText = summary.CurrentReading.ToString("N0");
+        float readingTextWidth = readingFont.MeasureText(readingText);
+        float readingUnitWidth = readingUnitFont.MeasureText(" kWh");
+        float readingBaseline = readingBox.MidY - ((readingFont.Metrics.Ascent + readingFont.Metrics.Descent) / 2f);
+        float readingStartX = readingBox.MidX - ((readingTextWidth + readingUnitWidth) / 2f);
+        canvas.DrawText(readingText, readingStartX, readingBaseline, SKTextAlign.Left, readingFont, blackFill);
+        canvas.DrawText(" kWh", readingStartX + readingTextWidth, readingBaseline, SKTextAlign.Left, readingUnitFont, blackFill);
+
+        string lastReadText = $"Last Read: {summary.LastCapturedAt.ToLocalTime():HH:mm}";
+        float infoBaseline = lastReadBox.MidY - ((infoFont.Metrics.Ascent + infoFont.Metrics.Descent) / 2f);
+        canvas.DrawText(lastReadText, lastReadBox.MidX, infoBaseline, SKTextAlign.Center, infoFont, blackFill);
+
+        string successText = $"{summary.SuccessRate.ToString("0.#")}%";
+        canvas.DrawText(successText, successBox.MidX, infoBaseline, SKTextAlign.Center, infoFont, blackFill);
+
+        float gridTop = topRowBottom + BodyTopPaddingPx;
+        float gridBottom = HeightPx - BodyBottomPaddingPx;
+        float gridLeft = HomeMarginPx;
+        float gridRight = WidthPx - HomeMarginPx;
+        float labelColumnRight = gridLeft + MeterGridLabelColumnWidthPx;
+        float dataColumnWidth = (gridRight - labelColumnRight) / 3f;
+        float todayColumnX = labelColumnRight;
+        float weekColumnX = todayColumnX + dataColumnWidth;
+        float monthColumnX = weekColumnX + dataColumnWidth;
+        float headerRowBottom = gridTop + MeterGridHeaderRowHeightPx;
+        float dataRowHeight = (gridBottom - headerRowBottom) / 2f;
+        float usageRowBottom = headerRowBottom + dataRowHeight;
+
+        canvas.DrawRoundRect(new SKRect(gridLeft, gridTop, gridRight, gridBottom), MeterGridCornerRadiusPx, MeterGridCornerRadiusPx, borderPaint);
+        canvas.DrawLine(labelColumnRight, gridTop, labelColumnRight, gridBottom, borderPaint);
+        canvas.DrawLine(weekColumnX, gridTop, weekColumnX, gridBottom, borderPaint);
+        canvas.DrawLine(monthColumnX, gridTop, monthColumnX, gridBottom, borderPaint);
+        canvas.DrawLine(gridLeft, headerRowBottom, gridRight, headerRowBottom, borderPaint);
+        canvas.DrawLine(gridLeft, usageRowBottom, gridRight, usageRowBottom, borderPaint);
+
+        float headerBaseline = gridTop + ((headerRowBottom - gridTop) / 2f) - ((gridHeaderFont.Metrics.Ascent + gridHeaderFont.Metrics.Descent) / 2f);
+        canvas.DrawText("Today", todayColumnX + (dataColumnWidth / 2f), headerBaseline, SKTextAlign.Center, gridHeaderFont, blackFill);
+        canvas.DrawText("7d", weekColumnX + (dataColumnWidth / 2f), headerBaseline, SKTextAlign.Center, gridHeaderFont, blackFill);
+        canvas.DrawText("30d", monthColumnX + (dataColumnWidth / 2f), headerBaseline, SKTextAlign.Center, gridHeaderFont, blackFill);
+
+        float usageRowCenter = headerRowBottom + (dataRowHeight / 2f);
+        float usageLabelBaseline = usageRowCenter - ((gridHeaderFont.Metrics.Ascent + gridHeaderFont.Metrics.Descent) / 2f);
+        float usageValueBaseline = usageRowCenter - ((gridValueFont.Metrics.Ascent + gridValueFont.Metrics.Descent) / 2f);
+        canvas.DrawText("kWh", gridLeft + (MeterGridLabelColumnWidthPx / 2f), usageLabelBaseline, SKTextAlign.Center, gridHeaderFont, blackFill);
+        canvas.DrawText(summary.TodayUsage.ToString("N0"), todayColumnX + (dataColumnWidth / 2f), usageValueBaseline, SKTextAlign.Center, gridValueFont, blackFill);
+        canvas.DrawText(summary.WeekUsage.ToString("N0"), weekColumnX + (dataColumnWidth / 2f), usageValueBaseline, SKTextAlign.Center, gridValueFont, blackFill);
+        canvas.DrawText(summary.MonthUsage.ToString("N0"), monthColumnX + (dataColumnWidth / 2f), usageValueBaseline, SKTextAlign.Center, gridValueFont, blackFill);
+
+        float costRowCenter = usageRowBottom + (dataRowHeight / 2f);
+        float costLabelBaseline = costRowCenter - ((gridHeaderFont.Metrics.Ascent + gridHeaderFont.Metrics.Descent) / 2f);
+        float costValueBaseline = costRowCenter - ((gridValueFont.Metrics.Ascent + gridValueFont.Metrics.Descent) / 2f);
+        canvas.DrawText("£", gridLeft + (MeterGridLabelColumnWidthPx / 2f), costLabelBaseline, SKTextAlign.Center, gridHeaderFont, blackFill);
+        canvas.DrawText($"£{summary.TodayCost:0.00}", todayColumnX + (dataColumnWidth / 2f), costValueBaseline, SKTextAlign.Center, gridValueFont, blackFill);
+        canvas.DrawText($"£{summary.WeekCost:0.00}", weekColumnX + (dataColumnWidth / 2f), costValueBaseline, SKTextAlign.Center, gridValueFont, blackFill);
+        canvas.DrawText($"£{summary.MonthCost:0.00}", monthColumnX + (dataColumnWidth / 2f), costValueBaseline, SKTextAlign.Center, gridValueFont, blackFill);
 
         return EncodeRgbPng(bitmap);
     }

@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Mvc;
 using SkiaSharp;
 using tzer0mApi.Models.HomeAssistant;
 using tzer0mApi.Models.Kuma;
+using tzer0mApi.Models.SmarterMeter;
 using tzer0mApi.Services.EInk;
 using tzer0mApi.Services.HomeAssistant;
 using tzer0mApi.Services.Kuma;
+using tzer0mApi.Services.SmarterMeter;
 
 namespace tzer0mApi.Controllers;
 
@@ -14,13 +16,16 @@ namespace tzer0mApi.Controllers;
 /// <param name="eInkImageService">The service used to render display images.</param>
 /// <param name="homeAssistantService">The service used to fetch calendar, task, and weather data for display A.</param>
 /// <param name="kumaService">The service used to fetch monitor status for display B.</param>
+/// <param name="databaseService">The service used to fetch meter readings for display C.</param>
+/// <param name="calculationService">The service used to calculate usage and cost for display C.</param>
+/// <param name="config">Configuration, used to resolve the SmarterMeter capture interval.</param>
 /// <param name="logger">The logger.</param>
 [ApiController]
 [Route("EInk")]
-public class EInkController(EInkImageService eInkImageService, HomeAssistantService homeAssistantService, KumaService kumaService, ILogger<EInkController> logger) : ControllerBase
+public class EInkController(EInkImageService eInkImageService, HomeAssistantService homeAssistantService, KumaService kumaService, DatabaseService databaseService, CalculationService calculationService, IConfiguration config, ILogger<EInkController> logger) : ControllerBase
 {
     /// <summary>
-    /// Renders the display shown for the given button letter - the home screen for A, the Kuma status board for B, a coloured placeholder for C-E until they have dedicated content (C yellow, D green, E blue - the remaining non-black/white inks the Spectra 6 panel can actually produce).
+    /// Renders the display shown for the given button letter - the home screen for A, the Kuma status board for B, the SmarterMeter status board for C, a coloured placeholder for D-E until they have dedicated content (D green, E blue - the remaining non-black/white inks the Spectra 6 panel can actually produce).
     /// </summary>
     /// <param name="letter">The button letter, A-E.</param>
     /// <returns>An 800x480 PNG image, or 404 if the letter isn't A-E.</returns>
@@ -32,9 +37,10 @@ public class EInkController(EInkImageService eInkImageService, HomeAssistantServ
             return File(await RenderHomeScreenAsync(), "image/png");
         if (normalizedLetter == "B")
             return File(await RenderKumaStatusAsync(), "image/png");
+        if (normalizedLetter == "C")
+            return File(await RenderMeterSummaryAsync(), "image/png");
         SKColor? colour = normalizedLetter switch
         {
-            "C" => SKColors.Yellow,
             "D" => SKColors.Lime,
             "E" => SKColors.Blue,
             _ => null
@@ -62,6 +68,29 @@ public class EInkController(EInkImageService eInkImageService, HomeAssistantServ
     {
         KumaStatusSummary? summary = await TryGetAsync(kumaService.GetStatusSummaryAsync, "status from Kuma");
         return eInkImageService.RenderKumaStatus(summary);
+    }
+
+    /// <summary>
+    /// Builds a usage and cost summary from the SmarterMeter database and renders the status board - a failed fetch renders a simple unavailable message rather than taking down the whole display.
+    /// </summary>
+    private async Task<byte[]> RenderMeterSummaryAsync()
+    {
+        MeterSummary? summary = await TryGetAsync(BuildMeterSummaryAsync, "summary from SmarterMeter");
+        return eInkImageService.RenderMeterSummary(summary);
+    }
+
+    /// <summary>
+    /// Fetches recent meter readings and calculates the usage and cost summary, matching the logic behind the /SmarterMeter/Summary endpoint.
+    /// </summary>
+    private async Task<MeterSummary> BuildMeterSummaryAsync()
+    {
+        int captureIntervalHours = config.GetValue<int?>("SmarterMeter:CaptureIntervalHours") ?? 1;
+        const int expectedReadings = 100;
+        int lookbackHours = expectedReadings * captureIntervalHours;
+        List<MeterReading> readings = [.. await databaseService.GetRecentReadingsAsync(500)];
+        DateTime cutoff = DateTime.UtcNow.AddHours(-lookbackHours);
+        decimal successRate = Math.Round(Math.Min(readings.Count(reading => reading.CapturedAt >= cutoff) / (decimal)expectedReadings * 100m, 100m), 1);
+        return calculationService.Calculate(readings, successRate, captureIntervalHours);
     }
 
     /// <summary>
