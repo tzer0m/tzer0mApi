@@ -492,19 +492,12 @@ public class EInkImageService(IWebHostEnvironment env)
             }
             allDayY += ItemGapPx;
         }
-        if (allDayEvents.Count == 0)
-            foreach (string line in WrapToLines("Nothing Scheduled", eventTitleFont, allDayColumnMaxWidth, 2))
-            {
-                canvas.DrawText(line, allDayColumnX, allDayY, SKTextAlign.Left, eventTitleFont, blackFill);
-                allDayY += WrapLineHeightPx;
-            }
 
         canvas.DrawRect(new SKRect(dividerOneX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, dividerOneX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
 
         canvas.DrawText("EVENTS", eventsColumnX, columnTop, SKTextAlign.Left, sectionHeaderFont, blackFill);
         float eventTitleX = eventsColumnX + EventTimeColumnWidthPx;
         float eventTitleMaxWidth = dividerTwoX - ColumnTextTrailingPaddingPx - eventTitleX;
-        float eventsColumnMaxWidth = dividerTwoX - ColumnTextTrailingPaddingPx - eventsColumnX;
         int elapsedTimedEventCount = timedEvents.Count(calendarEvent => calendarEvent.End <= now);
         int visibleTimedEventCapacity = CountItemsThatFit(timedEvents, eventTitleFont, eventTitleMaxWidth, columnTop + SectionHeaderGapPx, bodyLimitY);
         int timedEventStartIndex = elapsedTimedEventCount > 0 ? Math.Min(elapsedTimedEventCount, Math.Max(0, timedEvents.Count - visibleTimedEventCapacity)) : 0;
@@ -542,12 +535,6 @@ public class EInkImageService(IWebHostEnvironment env)
             }
             eventY = lineY + ItemGapPx;
         }
-        if (timedEvents.Count == 0)
-            foreach (string line in WrapToLines("Nothing Scheduled", eventTitleFont, eventsColumnMaxWidth, 2))
-            {
-                canvas.DrawText(line, eventsColumnX, eventY, SKTextAlign.Left, eventTitleFont, blackFill);
-                eventY += WrapLineHeightPx;
-            }
 
         canvas.DrawRect(new SKRect(dividerTwoX - (DividerThicknessPx / 2f), columnTop - BodyTopPaddingPx, dividerTwoX + (DividerThicknessPx / 2f), bodyLimitY), blackFill);
 
@@ -572,12 +559,6 @@ public class EInkImageService(IWebHostEnvironment env)
             }
             taskY += ItemGapPx;
         }
-        if (tasks.Count == 0)
-            foreach (string line in WrapToLines("Nothing Due", taskTitleFont, taskTitleMaxWidth, 2))
-            {
-                canvas.DrawText(line, tasksColumnX, taskY, SKTextAlign.Left, taskTitleFont, blackFill);
-                taskY += WrapLineHeightPx;
-            }
 
         return EncodeRgbPng(bitmap);
     }
