@@ -1,6 +1,6 @@
 # tzer0mApi
 
-[![Deploy](https://github.com/tzer0m/tzer0mApi/actions/workflows/deploy.yml/badge.svg)](https://github.com/tzer0m/tzer0mApi/actions/workflows/deploy.yml)
+[![Deploy](https://github.com/tzer0m/tzer0mApi/actions/workflows/deploy.yml/badge.svg)](https://github.com/tzer0m/tzer0mApi/actions/workflows/deploy.yml) [![Dependabot](https://github.com/tzer0m/tzer0mApi/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/tzer0m/tzer0mApi/actions/workflows/dependabot/dependabot-updates)
 
 A backend API that groups together a handful of otherwise-unrelated self-hosted services into a single ASP.NET Core Web API, rather than standing up a separate app for each one.
 
