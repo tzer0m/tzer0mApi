@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using tzer0mApi.Models.Chitter;
+using tzer0mApi.Models.News;
 using tzer0mApi.Services.Chitter;
+using tzer0mApi.Services.News;
 
 namespace tzer0mApi.Controllers;
 
@@ -10,9 +12,10 @@ namespace tzer0mApi.Controllers;
 /// <param name="printService">The service used to render and send print jobs.</param>
 /// <param name="quoteService">The service used to pick a random motivational quote or Chinese proverb.</param>
 /// <param name="packingListService">The service used to build the packing list text.</param>
+/// <param name="newsService">The service used to fetch the top news headline.</param>
 [ApiController]
 [Route("Chitter")]
-public class ChitterController(ChitterPrintService printService, QuoteService quoteService, PackingListService packingListService) : ControllerBase
+public class ChitterController(ChitterPrintService printService, QuoteService quoteService, PackingListService packingListService, NewsService newsService) : ControllerBase
 {
     /// <summary>
     /// The maximum size, in bytes, of an uploaded image.
@@ -123,6 +126,36 @@ public class ChitterController(ChitterPrintService printService, QuoteService qu
             return StatusCode(502, new { error = "Failed to reach printer." });
 
         // Return a success response indicating that the proverb was sent to the printer.
+        return Ok(new { message = "Sent to printer" });
+    }
+
+    /// <summary>
+    /// Fetches the top news story and prints its headline and summary, followed by the source.
+    /// </summary>
+    /// <returns>200 on success, 502 if the news feed or the printer could not be reached.</returns>
+    [HttpPost("Headline", Name = "Print Headline")]
+    public async Task<IActionResult> PrintHeadline()
+    {
+        // Fetch the top story, treating any feed failure as an unreachable upstream.
+        NewsItem story;
+        try
+        {
+            story = await newsService.GetTopStoryAsync();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            return StatusCode(502, new { error = "Failed to fetch the news headline." });
+        }
+
+        // Format the story for printing, leaving out the summary if the feed gave none.
+        string text = string.IsNullOrWhiteSpace(story.Description) ? $"{story.Title}\n\n— {newsService.SourceName}" : $"{story.Title}\n\n{story.Description}\n\n— {newsService.SourceName}";
+
+        // Send the text to the print service and check if it was sent successfully.
+        bool sent = await printService.PrintTextAsync(text);
+        if (!sent)
+            return StatusCode(502, new { error = "Failed to reach printer." });
+
+        // Return a success response indicating that the headline was sent to the printer.
         return Ok(new { message = "Sent to printer" });
     }
 
