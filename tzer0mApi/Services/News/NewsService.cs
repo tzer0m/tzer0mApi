@@ -6,7 +6,7 @@ namespace tzer0mApi.Services.News;
 /// <summary>
 /// Fetches the news RSS feed and returns its top story.
 /// </summary>
-/// <param name="configuration">Configuration, used to resolve the feed's URL and source name.</param>
+/// <param name="configuration">Configuration, used to resolve the feed's URL.</param>
 /// <param name="client">The HTTP client used to fetch the feed.</param>
 public class NewsService(IConfiguration configuration, HttpClient client)
 {
@@ -14,11 +14,6 @@ public class NewsService(IConfiguration configuration, HttpClient client)
     /// The news feed's URL, e.g. "https://feeds.bbci.co.uk/news/rss.xml".
     /// </summary>
     private string FeedUrl => configuration["News:FeedUrl"] ?? throw new NullReferenceException(nameof(FeedUrl));
-
-    /// <summary>
-    /// The human-readable name of the news source, e.g. "BBC News".
-    /// </summary>
-    public string SourceName => configuration["News:SourceName"] ?? throw new NullReferenceException(nameof(SourceName));
 
     /// <summary>
     /// Fetches the feed and returns its top story.

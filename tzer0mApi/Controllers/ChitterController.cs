@@ -130,7 +130,7 @@ public class ChitterController(ChitterPrintService printService, QuoteService qu
     }
 
     /// <summary>
-    /// Fetches the top news story and prints its headline and summary, followed by the source.
+    /// Fetches the top news story and prints its headline in bold with the summary below it.
     /// </summary>
     /// <returns>200 on success, 502 if the news feed or the printer could not be reached.</returns>
     [HttpPost("Headline", Name = "Print Headline")]
@@ -147,8 +147,8 @@ public class ChitterController(ChitterPrintService printService, QuoteService qu
             return StatusCode(502, new { error = "Failed to fetch the news headline." });
         }
 
-        // Format the story for printing, leaving out the summary if the feed gave none.
-        string text = string.IsNullOrWhiteSpace(story.Description) ? $"{story.Title}\n\n— {newsService.SourceName}" : $"{story.Title}\n\n{story.Description}\n\n— {newsService.SourceName}";
+        // Format the story for printing, with the headline in bold and the summary on the line below, leaving out the summary if the feed gave none.
+        string text = string.IsNullOrWhiteSpace(story.Description) ? $"**{story.Title}**" : $"**{story.Title}**\n{story.Description}";
 
         // Send the text to the print service and check if it was sent successfully.
         bool sent = await printService.PrintTextAsync(text);
