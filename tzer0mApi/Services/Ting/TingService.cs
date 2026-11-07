@@ -31,8 +31,9 @@ namespace tzer0mApi.Services.Ting
         /// <param name="title">Notification title</param>
         /// <param name="body">Notification body</param>
         /// <param name="summary">RSS summary</param>
+        /// <param name="url">Optional link to open when the notification is tapped</param>
         /// <returns>Task</returns>
-        public async Task Send(string title, string body, string summary = "Ting")
+        public async Task Send(string title, string body, string summary = "Ting", string? url = null)
         {
             // Get access and fcm tokens
             string accessToken = await FCMHelper.GetAccessToken(SERVICE_ACCOUNT_CREDENTIALS);
@@ -44,7 +45,7 @@ namespace tzer0mApi.Services.Ting
 
             // Add headers and content
             requestMessage.Headers.Add("Authorization", $"Bearer {accessToken}");
-            requestMessage.Content = new StringContent(JsonConvert.SerializeObject(new FCMBody(fcmToken, title, body)));
+            requestMessage.Content = new StringContent(JsonConvert.SerializeObject(new FCMBody(fcmToken, title, body, url)));
 
             // Send request and check response
             HttpResponseMessage response = await client.SendAsync(requestMessage);

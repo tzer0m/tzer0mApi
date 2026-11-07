@@ -13,7 +13,9 @@ namespace tzer0mApi.Controllers
     [Route("[controller]")]
     public class TingController(TingService tingService) : ControllerBase
     {
-        // Constants for file paths
+        /// <summary>
+        /// Constants for file paths
+        /// </summary>
         private const string FCM_TOKEN_FILE = "Services/FCM/fcmToken.txt";
 
         /// <summary>
@@ -21,11 +23,12 @@ namespace tzer0mApi.Controllers
         /// </summary>
         /// <param name="title">Notification title</param>
         /// <param name="body">Notification body</param>
+        /// <param name="url">Optional link to open when the notification is tapped</param>
         /// <returns>Task</returns>
         [HttpGet(Name = "Ting")]
-        public async Task Index(string title, string body)
+        public async Task Index(string title, string body, string? url = null)
         {
-            await tingService.Send(title, body);
+            await tingService.Send(title, body, url: url);
         }
 
         /// <summary>
