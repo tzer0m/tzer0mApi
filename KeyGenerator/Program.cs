@@ -16,8 +16,8 @@ internal class Program
         string keyName = args[0];
 
         // Load configuration
-        IConfiguration configuration = new ConfigurationBuilder().AddJsonFile("appsettings.json", optional: false).Build();
-        string connectionString = configuration.GetConnectionString("Robert1") ?? throw new InvalidOperationException("Robert1 connection string not configured");
+        IConfiguration configuration = new ConfigurationBuilder().AddUserSecrets<Program>().Build();
+        string connectionString = configuration.GetConnectionString("Robert1") ?? throw new InvalidOperationException("Robert1 connection string not configured in user secrets");
 
         // Generate key
         Console.WriteLine("Generating key...");
