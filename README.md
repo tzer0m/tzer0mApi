@@ -11,7 +11,6 @@ A backend API that groups together a handful of otherwise-unrelated self-hosted 
 - **Hours** — proxies a Clockify summary report for the current month, used by [`hours.py`](hours.py) (see below) to show hours worked vs. a monthly target.
 - **SmarterMeter** — receives a captured meter photo (by filename, read from a shared NAS path), runs it through Google Cloud Vision OCR, extracts the reading, and prices it against configured tariff periods. Backs a companion meter-reading dashboard and its Home Assistant integration.
 - **Ting** — sends push notifications via Firebase Cloud Messaging, exposes an endpoint to update the stored FCM token, and receives Uptime Kuma's webhook payload to relay monitor alerts as pushes.
-- **Weather** — UV index/forecast lookups via the OpenUV API.
 
 ## Security
 
@@ -39,10 +38,9 @@ Configuration lives in `appsettings.json` (see `appsettingsGit.json` for the sha
     "SmarterMeter": ""
   },
   "Authentication": {
-    "PrivatePaths": [ "/ting", "/ting/update", "/weather/uv/notify", "/smartermeter/*" ]
+    "PrivatePaths": [ "/ting", "/ting/update", "/smartermeter/*" ]
   },
   "Hours": { "WorkspaceId": "", "ApiKey": "" },
-  "Weather": { "OpenUV": { "BaseUrl": "https://api.openuv.io/api/v1/forecast", "ApiKey": "" } },
   "RssApiKey": "",
   "SmarterMeter": {
     "Storage": { "CapturePath": "" },
