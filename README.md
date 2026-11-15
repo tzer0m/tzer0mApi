@@ -23,9 +23,9 @@ KeyGenerator <key-name>
 ## Tech Stack
 
 - ASP.NET Core Web API on .NET 10, with Swagger/OpenAPI at the root
-- EF Core + Npgsql (StockWise data)
+- Npgsql for Postgres access: API key hashes in the `Robert1` database (`KeysService`) and meter readings in the `SmarterMeter` database (`DatabaseService`)
 - FirebaseAdmin / Google.Apis.Auth (push notifications, Vision OCR)
-- Health checks at `/health` (Postgres connectivity)
+- Health checks at `/health` (`smartermeter-db`: SmarterMeter Postgres connectivity)
 
 ## Configuration
 

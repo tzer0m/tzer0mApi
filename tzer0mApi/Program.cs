@@ -29,7 +29,7 @@ builder.Services.AddHttpClient<NewsService>();
 builder.Services.AddSingleton<DatabaseService>();
 builder.Services.AddScoped<KeysService>();
 builder.Services.AddScoped<CalculationService>();
-builder.Services.AddHealthChecks().AddNpgSql(builder.Configuration.GetConnectionString("StockWise") ?? throw new InvalidOperationException("Missing StockWise connection string"), name: "stockwise-db");
+builder.Services.AddHealthChecks().AddNpgSql(builder.Configuration.GetConnectionString("SmarterMeter") ?? throw new InvalidOperationException("Missing SmarterMeter connection string"), name: "smartermeter-db");
 
 // Build app
 WebApplication app = builder.Build();
