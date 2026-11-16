@@ -9,7 +9,7 @@ A backend API that groups together a handful of otherwise-unrelated self-hosted 
 - **Chitter** — renders and sends print jobs to a home-mounted Aures ODP 333 receipt printer over raw ESC/POS, backing the companion [ChitterUI](https://github.com/tzer0m/ChitterUI) Blazor app.
 - **EInk** — renders 800x480 PNGs for a networked e-ink clock (Pimoroni Inky Frame 7.3", Pico 2 W) via `GET /EInk/{letter}` — the clock for A, coloured placeholders for B-E.
 - **Hours** — proxies a Clockify summary report for the current month, used by [`hours.py`](hours.py) (see below) to show hours worked vs. a monthly target.
-- **SmarterMeter** — receives a captured meter photo (by filename, read from a shared NAS path), runs it through Google Cloud Vision OCR, extracts the reading, and prices it against configured tariff periods. Backs a companion meter-reading dashboard and its Home Assistant integration.
+- **SmarterMeter** — receives a captured meter photo (by filename, read from a shared NAS path), runs it through Gemini OCR, extracts the reading, and prices it against configured tariff periods. Backs a companion meter-reading dashboard and its Home Assistant integration.
 - **Ting** — sends push notifications via Firebase Cloud Messaging, exposes an endpoint to update the stored FCM token, and receives Uptime Kuma's webhook payload to relay monitor alerts as pushes.
 
 ## Security
@@ -24,7 +24,8 @@ KeyGenerator <key-name>
 
 - ASP.NET Core Web API on .NET 10, with Swagger/OpenAPI at the root
 - Npgsql for Postgres access: API key hashes in the `Robert1` database (`KeysService`) and meter readings in the `SmarterMeter` database (`DatabaseService`)
-- FirebaseAdmin / Google.Apis.Auth (push notifications, Vision OCR)
+- FirebaseAdmin / Google.Apis.Auth (push notifications)
+- Gemini API over plain `HttpClient` (meter OCR)
 - Health checks at `/health` (`smartermeter-db`: SmarterMeter Postgres connectivity)
 
 ## Configuration
@@ -44,7 +45,7 @@ Configuration lives in `appsettings.json` (see `appsettingsGit.json` for the sha
   "RssApiKey": "",
   "SmarterMeter": {
     "Storage": { "CapturePath": "" },
-    "GoogleVision": { "ApiKey": "" },
+    "Gemini": { "ApiKey": "", "Model": "" },
     "Tariffs": [
       { "StartDate": "", "EndDate": "", "UnitRatePence": 0, "StandingChargePence": 0 }
     ]

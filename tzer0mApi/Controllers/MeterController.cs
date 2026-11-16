@@ -49,7 +49,7 @@ public class MeterController(GeminiOcrService geminiOcrService, DatabaseService 
         // Read raw image bytes from NAS
         byte[] imageBytes = await System.IO.File.ReadAllBytesAsync(imagePath);
 
-        // Send directly to Google Cloud Vision
+        // Send to Gemini for OCR
         string? rawText = await geminiOcrService.DetectTextAsync(imageBytes);
         if (string.IsNullOrWhiteSpace(rawText))
             return UnprocessableEntity(new { error = "OCR returned no text" });

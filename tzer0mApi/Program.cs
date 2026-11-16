@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using tzer0mApi.Services.Chitter;
 using tzer0mApi.Services.EInk;
 using tzer0mApi.Services.HomeAssistant;
